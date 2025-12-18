@@ -1,0 +1,19 @@
+[package]
+name = "ranker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+csv = "1.4.0"
+env_logger = "0.11.8"
+image = "0.25.8"
+log = "0.4.28"
+prompted = "0.2.8"
+rand = "0.9.2"
+ratatui = "0.29.0"
+ratatui-image = "8.0.2"
+ratatui-macros = "0.6.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
