@@ -1,5 +1,12 @@
+mod app;
 mod ranker;
 mod types;
+
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::PathBuf,
+};
 
 use log::info;
 use prompted::input;
@@ -23,10 +30,28 @@ fn main() -> anyhow::Result<()> {
 
     // ratatui::restore();
 
-    let mut rng = rand::rng();
+    if !PathBuf::from(".projects").exists() {
+        File::create(".projects")?;
+    }
+    let mut projects = fs::read_to_string(".projects")
+        .unwrap()
+        .lines()
+        .map(|x| {
+            (
+                x.split(": ").nth(0).unwrap().to_string(),
+                x.split(": ").nth(1).unwrap().to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    if projects.is_empty() {
+        projects.push(("test".into(), ".test".into()));
+    }
 
-    ranker::files::initialize_files()?;
-    let entries = std::fs::read_dir(".test")?;
+    let mut ranker = Ranker::new(None, "test".into())?;
+    // let mut ranker = Ranker::default(); // simpler
+    ranker.try_select_project_by_name(&projects[0].0)?;
+
+    let entries = std::fs::read_dir(&projects[0].1)?;
     let mut files = vec![];
     for entry in entries {
         let dir = entry?;
@@ -36,19 +61,30 @@ fn main() -> anyhow::Result<()> {
             .to_str()
             .is_some_and(|x| x.to_lowercase().ends_with("png"))
         {
-            files.push(dir.path().to_str().unwrap().to_string());
+            files.push(
+                dir.path()
+                    // .canonicalize()
+                    // .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            );
         }
     }
-    files.shuffle(&mut rng);
+    files.shuffle(&mut rand::rng());
 
-    let mut ranker = Ranker::new()?.init(files)?;
-    let total_ratings = ranker.get_total_ratings();
+    ranker.sync_project(files)?;
+
+    let mut total_ratings = ranker.get_total_ratings();
     loop {
-        info!("total: {}/{total_ratings}", &ranker.num_rated_items);
+        info!(
+            "total: {}/{total_ratings}",
+            ranker.get_project().num_rated_items
+        );
         info!(
             "window: {}/{}",
-            &ranker.window_rated_items,
-            (1..crate::ranker::WINDOW_SIZE).sum::<usize>()
+            ranker.window_rated_items,
+            (1..ranker::WINDOW_SIZE).sum::<usize>()
         );
 
         let next = ranker.next()?;
@@ -76,6 +112,7 @@ fn main() -> anyhow::Result<()> {
 
         let mut a_won = false;
         let mut quit = false;
+        let mut c = false;
         let mut choice = input!("choose (a-b): ");
         loop {
             if choice.trim() == "a" {
@@ -87,11 +124,60 @@ fn main() -> anyhow::Result<()> {
             } else if choice.trim() == "q" {
                 quit = true;
                 break;
+            } else if choice.trim() == "c" {
+                c = true;
+                break;
             }
             choice = input!("choose (a-b): ");
         }
         if quit {
             break;
+        }
+        if c {
+            for name in ranker.get_project_names() {
+                print!("{name}\t");
+            }
+            let name = input!("\nenter project name: ");
+            let id = ranker.try_find_project(&name);
+            if let Some(id) = id {
+                ranker.select_project(id)?;
+            } else {
+                let p = input!("enter project path: ");
+                if p == "q" {
+                    continue;
+                }
+                projects.push((name.clone(), p));
+
+                let mut file = File::create(".projects")?;
+                for project in &projects {
+                    writeln!(file, "{}: {}", project.0, project.1)?;
+                }
+
+                ranker.create_project(name.clone())?;
+            }
+
+            let entries =
+                std::fs::read_dir(&projects[projects.iter().position(|x| name == x.0).unwrap()].1)?;
+            let mut files = vec![];
+            for entry in entries {
+                let dir = entry?;
+
+                if dir.file_name().to_str().is_some_and(|x| {
+                    x.to_lowercase().ends_with("png")
+                        || x.to_lowercase().ends_with("jpg")
+                        || x.to_lowercase().ends_with("jpeg")
+                        || x.to_lowercase().ends_with("webp")
+                }) {
+                    files.push(dir.path().to_str().unwrap().to_string());
+                }
+            }
+            files.shuffle(&mut rand::rng());
+
+            ranker.sync_project(files)?;
+
+            total_ratings = ranker.get_total_ratings();
+
+            continue;
         }
 
         ranker.log_result(a_won)?;
@@ -100,7 +186,7 @@ fn main() -> anyhow::Result<()> {
     for (i, item) in ranker.get_item_scores().iter().enumerate().rev() {
         let x = String::from_utf8(
             std::process::Command::new("chafa")
-                .args(["--polite", "on", "-s", "64x24", &item.0])
+                .args(["--polite", "on", "-s", "48x12", &item.0])
                 .output()?
                 .stdout,
         )?;

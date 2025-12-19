@@ -5,13 +5,13 @@ impl BitMask {
     // pub fn append(&mut self, value: u8) {
     //     self.0.push(value);
     // }
-    pub fn extend_by(&mut self, extension: u16) {
+    pub fn extend_by_bytes(&mut self, extension: u16) {
         for _ in 0..extension {
             self.0.push(0u8);
         }
         // self.0.append(&mut vec![0u8; extension as usize]);
     }
-    fn shrink_by(&mut self, shrinkage: u16) {
+    fn shrink_by_bytes(&mut self, shrinkage: u16) {
         if self.0.len() < shrinkage as usize {
             panic!(
                 "trying to shrink by {shrinkage} bytes but bitmask size is {}",
@@ -22,15 +22,15 @@ impl BitMask {
             _ = self.0.pop();
         }
     }
-    pub fn fit_to_num(&mut self, size: u16) {
-        let bytes = (size >> 3) + 1;
+    pub fn fit_to_number_of_bits(&mut self, size: u16) {
+        let bytes = (size >> 3) + if size & 0b111 != 0 { 1 } else { 0 };
         self.fit_to_bytes(bytes);
     }
     pub fn fit_to_bytes(&mut self, bytes: u16) {
         if self.0.len() > bytes as usize {
-            self.shrink_by(self.0.len() as u16 - bytes);
+            self.shrink_by_bytes(self.0.len() as u16 - bytes);
         } else if self.0.len() < bytes as usize {
-            self.extend_by(bytes - self.0.len() as u16);
+            self.extend_by_bytes(bytes - self.0.len() as u16);
         }
     }
     pub fn discard_bit(&mut self, id: u16) {
@@ -79,70 +79,70 @@ impl BitMask {
         let rem = index & 7; // rem of 8
 
         if self.0.len() <= div as usize {
-            self.extend_by(div + 1 - self.0.len() as u16);
+            self.extend_by_bytes(div + 1 - self.0.len() as u16);
         }
 
         self.0[div as usize] |= 1 << rem;
     }
-    // pub fn reset_bit(&mut self, index: u16) {
-    //     let div = index >> 3; // div by 8
-    //     let rem = index & 7; // rem of 8
+    pub fn reset_bit(&mut self, index: u16) {
+        let div = index >> 3; // div by 8
+        let rem = index & 7; // rem of 8
 
-    //     if self.0.len() <= div as usize {
+        if self.0.len() <= div as usize {
+            panic!(
+                "index out of bounds: trying to reset byte {} but the length is {}",
+                div,
+                self.0.len(),
+            );
+        }
+
+        self.0[div as usize] &= 0xff ^ (1 << rem);
+    }
+
+    // pub fn get_byte(&self, index: u16) -> u8 {
+    //     if index as usize >= self.0.len() {
     //         panic!(
-    //             "index out of bounds: trying to reset byte {} but the length is {}",
-    //             div,
+    //             "index out of bounds: trying to access byte {} but the length is {}",
+    //             index,
     //             self.0.len(),
     //         );
     //     }
 
-    //     self.0[div as usize] &= 0xff ^ (1 << rem);
+    //     self.0[index as usize]
     // }
+    // pub fn inc_byte(&mut self, index: u16) {
+    //     if index as usize >= self.0.len() {
+    //         panic!(
+    //             "index out of bounds: trying to increment byte {} but the length is {}",
+    //             index,
+    //             self.0.len(),
+    //         );
+    //     }
 
-    pub fn get_byte(&self, index: u16) -> u8 {
-        if index as usize >= self.0.len() {
-            panic!(
-                "index out of bounds: trying to access byte {} but the length is {}",
-                index,
-                self.0.len(),
-            );
-        }
+    //     self.0[index as usize] += 1;
+    // }
+    // pub fn set_byte(&mut self, index: u16, value: u8) {
+    //     if index as usize >= self.0.len() {
+    //         panic!(
+    //             "index out of bounds: trying to reset byte {} but the length is {}",
+    //             index,
+    //             self.0.len(),
+    //         );
+    //     }
 
-        self.0[index as usize]
-    }
-    pub fn inc_byte(&mut self, index: u16) {
-        if index as usize >= self.0.len() {
-            panic!(
-                "index out of bounds: trying to increment byte {} but the length is {}",
-                index,
-                self.0.len(),
-            );
-        }
+    //     self.0[index as usize] = value;
+    // }
+    // pub fn discard_byte(&mut self, index: u16) {
+    //     if index as usize >= self.0.len() {
+    //         panic!(
+    //             "index out of bounds: trying to discard byte {} but the length is {}",
+    //             index,
+    //             self.0.len(),
+    //         );
+    //     }
 
-        self.0[index as usize] += 1;
-    }
-    pub fn set_byte(&mut self, index: u16, value: u8) {
-        if index as usize >= self.0.len() {
-            panic!(
-                "index out of bounds: trying to reset byte {} but the length is {}",
-                index,
-                self.0.len(),
-            );
-        }
-
-        self.0[index as usize] = value;
-    }
-    pub fn discard_byte(&mut self, index: u16) {
-        if index as usize >= self.0.len() {
-            panic!(
-                "index out of bounds: trying to discard byte {} but the length is {}",
-                index,
-                self.0.len(),
-            );
-        }
-
-        self.0.remove(index as usize);
-    }
+    //     self.0.remove(index as usize);
+    // }
     pub fn ref_vec(&self) -> &Vec<u8> {
         &self.0
     }
@@ -197,13 +197,13 @@ mod bitmask_tests {
     fn test_shrink_extend() {
         let mut bitmask: BitMask = vec![].into();
 
-        bitmask.extend_by(1);
+        bitmask.extend_by_bytes(1);
         assert_eq!(bitmask, vec![0].into());
 
-        bitmask.extend_by(17);
-        bitmask.shrink_by(18);
+        bitmask.extend_by_bytes(17);
+        bitmask.shrink_by_bytes(18);
 
-        bitmask.shrink_by(1)
+        bitmask.shrink_by_bytes(1)
     }
 
     #[test]
