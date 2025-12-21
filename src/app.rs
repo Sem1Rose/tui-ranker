@@ -1,5 +1,5 @@
-use crate::Ranker;
+// use ranker::Ranker;
 
-struct App<T> {
-    ranker: Ranker<T>,
-}
+// struct App<T> {
+//     ranker: Ranker<T>,
+// }

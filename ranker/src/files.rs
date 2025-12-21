@@ -1,7 +1,6 @@
-use crate::ranker::types::BitMask;
+use crate::bitmask::BitMask;
 use csv::{ReaderBuilder, WriterBuilder};
 use std::{fs::File, io::prelude::*, path::Path, str::FromStr};
-// use log::info;
 
 pub fn get_cached_items<T: FromStr>(dir: &Path) -> anyhow::Result<Vec<(T, f32)>> {
     let mut items = vec![];

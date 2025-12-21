@@ -1,14 +1,21 @@
-use anyhow::{Ok, bail};
+// use anyhow::bail;
+use bitmask::BitMask;
 use log::{debug, error, info};
 use rand::seq::{IteratorRandom, SliceRandom};
-use std::{fs::File, panic, path::PathBuf, str::FromStr, usize, vec};
-use types::BitMask;
+use std::{
+    fmt,
+    fs::{self, File},
+    panic,
+    path::PathBuf,
+    str::FromStr,
+    usize, vec,
+};
 
+mod bitmask;
 mod elo;
 mod files;
-mod types;
 
-pub const WINDOW_SIZE: usize = 9;
+pub const DEFUALT_WINDOW_SIZE: usize = 9;
 
 pub fn shuffle<T: Clone>(arr: &[T]) -> Vec<T> {
     let mut shuffled = arr.to_vec();
@@ -17,9 +24,37 @@ pub fn shuffle<T: Clone>(arr: &[T]) -> Vec<T> {
     shuffled
 }
 
+type Result<T> = anyhow::Result<T, ProjectsError>;
+#[derive(Debug)]
+pub enum ProjectsError {
+    NoProjects,
+    NotEnoughItems,
+    Other(anyhow::Error),
+}
+impl fmt::Display for ProjectsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoProjects => write!(f, "No projects were loaded or no projects found!"),
+            Self::NotEnoughItems => write!(f, "selected project has less than two items"),
+            Self::Other(err) => write!(f, "{err}"),
+        }
+    }
+}
+impl std::error::Error for ProjectsError {}
+impl From<anyhow::Error> for ProjectsError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Other(err)
+    }
+}
+impl From<std::io::Error> for ProjectsError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Other(err.into())
+    }
+}
+
 #[derive(Default)]
 pub struct Project<T> {
-    name: String,
+    pub name: String,
     dir: PathBuf,
 
     items: Vec<(T, f32)>,
@@ -29,12 +64,14 @@ pub struct Project<T> {
     pub num_rated_items: usize,
 }
 
-// #[derive(Default)]
+#[derive(Default)]
 pub struct Ranker<T> {
     selected_project: usize,
     root: PathBuf,
     projects: Vec<Project<T>>,
+    no_projects: bool,
 
+    pub window_size: usize,
     window: Vec<u16>,
     item_a: usize,
     item_b: usize,
@@ -47,45 +84,58 @@ impl<T> Ranker<T>
 where
     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
 {
-    pub fn new(custom_root: Option<PathBuf>, default_project_name: String) -> anyhow::Result<Self> {
-        let root = if let Some(root) = custom_root {
-            root
-        } else {
-            dirs::config_dir()
-                .expect("Couldn't get user's config dir")
-                .join("ranker")
-        };
-        if !root.exists() {
-            std::fs::create_dir(&root)?;
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            item_a_won: true,
+            window_size: DEFUALT_WINDOW_SIZE,
+            no_projects: true,
+            ..Default::default()
+        })
+    }
+
+    pub fn with_window_size(mut self, custom_window_size: usize) -> Self {
+        self.window_size = custom_window_size;
+        self
+    }
+
+    pub fn load_projects(self) -> Result<Self> {
+        self.load_projects_from(".".into())
+    }
+    pub fn load_projects_from(mut self, root: PathBuf) -> Result<Self> {
+        self.root = PathBuf::from(root).join(".ranker");
+        if !self.root.exists() {
+            std::fs::create_dir(&self.root)?;
         }
 
-        let mut projects: Vec<Project<T>> = root
+        self.projects = self
+            .root
             .read_dir()
             .unwrap()
             .filter_map(|x| x.ok())
             .filter(|x| x.path().is_dir())
-            .inspect(|x| info!("{}", x.path().file_name().unwrap().to_str().unwrap()))
+            // .inspect(|x| info!("{}", x.path().file_name().unwrap().to_str().unwrap()))
             .filter_map(|x| {
                 Project::<T>::new(
-                    &root,
+                    &self.root,
                     x.path().file_name().unwrap().to_str().unwrap().to_string(),
                 )
                 .ok()
             }) // `new` will return an error if it can't create the necessary files, so the object is skipped
             .collect();
-        if projects.is_empty() {
-            projects.push(Project::<T>::new(&root, default_project_name)?);
+        if !self.projects.is_empty() {
+            self.no_projects = false;
+            // self.projects
+            //     .push(Project::<T>::new(&self.root, "project")?);
         }
 
-        Ok(Self {
-            projects,
-            root,
-            item_a_won: true,
-            ..Default::default()
-        })
+        Ok(self)
     }
 
-    pub fn init(&mut self) -> anyhow::Result<()> {
+    pub fn init(&mut self) -> Result<()> {
+        if self.no_projects {
+            return Err(ProjectsError::NoProjects);
+        }
+
         if !self.get_new_window() {
             info!("all images has been rated, resetting..");
 
@@ -95,12 +145,12 @@ where
         }
 
         if self.window.len() < 2 {
-            info!(
+            error!(
                 "selected project has less than two items: {}",
-                self.get_project().name
+                self.get_project()?.name
             );
         } else {
-            info!("got window {:?}", self.window);
+            debug!("got window {:?}", self.window);
 
             self.item_a = *self.window.iter().choose(&mut rand::rng()).unwrap() as usize;
         }
@@ -108,7 +158,7 @@ where
         Ok(())
     }
 
-    pub fn sync_project(&mut self, items: Vec<T>) -> anyhow::Result<()> {
+    pub fn sync_project(&mut self, items: Vec<T>) -> Result<()> {
         self.projects[self.selected_project].initialize(items)?;
         if self.window.is_empty() {
             self.init()?;
@@ -116,8 +166,12 @@ where
 
         Ok(())
     }
-    pub fn get_project(&self) -> &Project<T> {
-        &self.projects[self.selected_project]
+    pub fn get_project(&self) -> Result<&Project<T>> {
+        if self.no_projects {
+            Err(ProjectsError::NoProjects)
+        } else {
+            Ok(&self.projects[self.selected_project])
+        }
     }
     pub fn get_project_names(&self) -> Vec<String> {
         self.projects.iter().map(|p| p.name.clone()).collect()
@@ -125,8 +179,8 @@ where
     pub fn try_find_project(&self, name: &str) -> Option<usize> {
         self.projects.iter().position(|p| p.name == name)
     }
-    pub fn select_project(&mut self, project: usize) -> anyhow::Result<()> {
-        if self.selected_project >= self.projects.len() {
+    pub fn select_project(&mut self, project: usize) -> Result<()> {
+        if project >= self.projects.len() {
             panic!(
                 "Trying to access index {project} but the length is {}",
                 self.projects.len()
@@ -137,30 +191,66 @@ where
 
         self.init()
     }
-    pub fn try_select_project_by_name(&mut self, name: &str) -> anyhow::Result<()> {
+    pub fn try_select_project_by_name(&mut self, name: &str) -> Result<bool> {
         if let Some(i) = self.try_find_project(name) {
             self.select_project(i)?;
 
-            return Ok(());
+            return Ok(true);
         }
 
-        bail!("Couldn't find project {}", name)
+        // bail!("Couldn't find project {}", name)
+        Ok(false)
     }
-    pub fn create_project(&mut self, name: String) -> anyhow::Result<()> {
+    pub fn create_project(&mut self, name: String) -> Result<()> {
         self.projects.push(Project::new(&self.root, name)?);
         self.selected_project = self.projects.len() - 1;
         self.window = vec![];
+        self.no_projects = false;
 
         Ok(())
     }
+    pub fn delete_project(&mut self, project: usize) -> Result<()> {
+        if project >= self.projects.len() {
+            panic!(
+                "Trying to delete index {project} but the length is {}",
+                self.projects.len()
+            )
+        }
 
-    pub fn next(&mut self) -> anyhow::Result<Option<(T, T)>> {
+        fs::remove_dir_all(self.root.join(&self.projects[project].name))?;
+        self.projects.remove(project);
+        if self.projects.len() == 0 {
+            self.no_projects = true;
+        } else if self.selected_project == project {
+            if self.selected_project == self.projects.len() {
+                self.select_project(self.selected_project - 1)?;
+            }
+        }
+
+        Ok(())
+    }
+    pub fn try_delete_project_by_name(&mut self, name: &str) -> Result<bool> {
+        if let Some(i) = self.try_find_project(name) {
+            self.delete_project(i)?;
+
+            return Ok(true);
+        }
+
+        // bail!("Couldn't find project {}", name)
+        Ok(false)
+    }
+
+    pub fn get_next(&mut self) -> Result<Option<(T, T)>> {
+        if self.no_projects {
+            return Err(ProjectsError::NoProjects);
+        }
+
         if self.window.len() < 2 {
             error!(
                 "selected project has less than two items: {}",
-                self.get_project().name
+                self.get_project()?.name
             );
-            bail!("Not enough items in project");
+            return Err(ProjectsError::NotEnoughItems);
         }
 
         let mut refresh = false;
@@ -172,7 +262,7 @@ where
                 info!("all images has been rated, quitting..");
                 return Ok(None);
             }
-            info!("got a new window {:?}", self.window);
+            debug!("got a new window {:?}", self.window);
 
             self.window_rated_items = 0;
             refresh = true;
@@ -212,7 +302,7 @@ where
                 }
             }
 
-            info!("getting a new item_b");
+            debug!("getting a new item_b");
             self.item_b = self.choose_random_opponent(self.item_a);
         } else {
             let mut b_rated_all_window = true;
@@ -245,7 +335,7 @@ where
                 }
             }
 
-            info!("getting a new item_b");
+            debug!("getting a new item_b");
             self.item_a = self.choose_random_opponent(self.item_b);
         }
 
@@ -259,7 +349,7 @@ where
         )))
     }
 
-    pub fn log_result(&mut self, a_won: bool) -> anyhow::Result<()> {
+    pub fn log_result(&mut self, a_won: bool) -> Result<()> {
         self.projects[self.selected_project].bitmasks[self.item_a].set_bit(self.item_b as u16);
         self.projects[self.selected_project].bitmasks[self.item_b].set_bit(self.item_a as u16);
         self.projects[self.selected_project].num_rated_items += 1;
@@ -324,7 +414,7 @@ where
 
         self.window_rated_items = 0;
         self.window = vec![];
-        info!("initializing a new window...");
+        debug!("initializing a new window...");
         // info!(
         //     "{:#?}",
         //     shuffle(&(0..bitmasks.len() as u16).collect::<Vec<_>>())
@@ -363,7 +453,7 @@ where
             }
 
             self.window.push(i);
-            if self.window.len() == WINDOW_SIZE {
+            if self.window.len() == DEFUALT_WINDOW_SIZE {
                 break;
             }
         }
@@ -393,7 +483,7 @@ where
             if opponent_index != item as u16
                 && !self.projects[self.selected_project].bitmasks[item].check_bit(opponent_index)
             {
-                info!("got {opponent_index}");
+                debug!("got {opponent_index}");
                 return opponent_index as usize;
             }
         }
@@ -401,7 +491,7 @@ where
         usize::MAX
     }
 
-    fn update_results_elos(&mut self) -> anyhow::Result<()> {
+    fn update_results_elos(&mut self) -> Result<()> {
         let mut new_ratings: Vec<(&u16, (T, f32))> = vec![];
         for i in &self.window {
             for j in &self.window {
@@ -430,7 +520,7 @@ where
                 }
 
                 let new_rating = elo::calc_new_rating(*i_rating, *j_rating, score);
-                info!("{}x{}={} {}->{}", i, j, score, i_rating, new_rating);
+                debug!("{}x{}={} {}->{}", i, j, score, i_rating, new_rating);
 
                 if i_new_rating_pos.is_some() {
                     new_ratings[i_new_rating_pos.unwrap()].1.1 = new_rating;
@@ -462,55 +552,68 @@ where
     }
 }
 
-impl<T> Default for Ranker<T>
-where
-    T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
-{
-    fn default() -> Self {
-        let root = dirs::config_dir()
-            .expect("Couldn't get user's config dir")
-            .join("ranker");
-        if !root.exists() {
-            std::fs::create_dir(&root).expect("Couldn't create root directory");
-        }
+// impl<T> Default for Ranker<T>
+// where
+//     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
+// {
+//     fn default() -> Self {
+//         let root = dirs::config_dir()
+//             .expect("Couldn't get user's config dir")
+//             .join("ranker");
+//         if !root.exists() {
+//             std::fs::create_dir(&root).expect("Couldn't create root directory");
+//         }
 
-        let mut projects: Vec<Project<T>> = root
-            .read_dir()
-            .unwrap()
-            .filter_map(|x| x.ok())
-            .filter(|x| x.path().is_dir())
-            .inspect(|x| info!("{}", x.path().file_name().unwrap().to_str().unwrap()))
-            .filter_map(|x| {
-                Project::<T>::new(
-                    &root,
-                    x.path().file_name().unwrap().to_str().unwrap().to_string(),
-                )
-                .ok()
-            }) // `new` will return an error if it can't create the necessary files, so the object is skipped
-            .collect();
-        if projects.is_empty() {
-            projects
-                .push(Project::<T>::new(&root, "0".into()).expect("IDK just figure it out gng"));
-        }
+//         let mut projects: Vec<Project<T>> = root
+//             .read_dir()
+//             .unwrap()
+//             .filter_map(|x| x.ok())
+//             .filter(|x| x.path().is_dir())
+//             .inspect(|x| info!("{}", x.path().file_name().unwrap().to_str().unwrap()))
+//             .filter_map(|x| {
+//                 Project::<T>::new(
+//                     &root,
+//                     x.path().file_name().unwrap().to_str().unwrap().to_string(),
+//                 )
+//                 .ok()
+//             }) // `new` will return an error if it can't create the necessary files, so the object is skipped
+//             .collect();
+//         if projects.is_empty() {
+//             projects
+//                 .push(Project::<T>::new(&root, "0".into()).expect("IDK just figure it out gng"));
+//         }
 
-        Self {
-            projects,
-            root,
-            item_a_won: true,
-            selected_project: Default::default(),
-            window: Default::default(),
-            item_a: Default::default(),
-            item_b: Default::default(),
-            window_rated_items: Default::default(),
-        }
-    }
-}
+//         Self {
+//             projects,
+//             root,
+//             item_a_won: true,
+//             selected_project: Default::default(),
+//             window: Default::default(),
+//             item_a: Default::default(),
+//             item_b: Default::default(),
+//             window_rated_items: Default::default(),
+//             window_size: DEFUALT_WINDOW_SIZE,
+//         }
+//     }
+// }
+
+// consumes self :(
+// impl<T> Iterator for Ranker<T>
+// where
+//     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
+// {
+//     type Item = (T, T);
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.get_next().unwrap_or(None)
+//     }
+// }
 
 impl<T> Project<T>
 where
     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
 {
-    pub fn new(root: &PathBuf, name: String) -> anyhow::Result<Self> {
+    pub fn new(root: &PathBuf, name: String) -> Result<Self> {
         Self {
             dir: root.join(&name),
             name,
@@ -520,7 +623,7 @@ where
         .load()
     }
 
-    fn ensure_files_exist(self) -> anyhow::Result<Self> {
+    fn ensure_files_exist(self) -> Result<Self> {
         if !self.dir.exists() {
             std::fs::create_dir(&self.dir)?;
         }
@@ -537,7 +640,7 @@ where
         Ok(self)
     }
 
-    fn load(mut self) -> anyhow::Result<Self> {
+    fn load(mut self) -> Result<Self> {
         self.items = files::get_cached_items(&self.dir)?;
         self.bitmasks = files::get_cached_bitmasks(&self.dir)?;
         self.results = files::get_cached_results(&self.dir)?;
@@ -545,7 +648,7 @@ where
         Ok(self)
     }
 
-    fn initialize(&mut self, items: Vec<T>) -> anyhow::Result<()> {
+    fn initialize(&mut self, items: Vec<T>) -> Result<()> {
         let cached_items = self.items.clone();
         self.items = vec![];
 
@@ -622,15 +725,15 @@ where
         Ok(())
     }
 
-    fn cache_items(&self) -> anyhow::Result<()> {
+    fn cache_items(&self) -> Result<()> {
         files::cache_items(&self.dir, &self.items)?;
         Ok(())
     }
-    fn cache_bitmasks(&self) -> anyhow::Result<()> {
+    fn cache_bitmasks(&self) -> Result<()> {
         files::cache_bitmasks(&self.dir, &self.bitmasks)?;
         Ok(())
     }
-    fn cache_results(&self) -> anyhow::Result<()> {
+    fn cache_results(&self) -> Result<()> {
         files::cache_results(&self.dir, &self.results)?;
         Ok(())
     }
