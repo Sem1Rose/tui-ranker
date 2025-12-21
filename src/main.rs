@@ -174,7 +174,7 @@ fn main() -> anyhow::Result<()> {
         info!(
             "window: {}/{}",
             ranker.window_rated_items,
-            (1..ranker::DEFUALT_WINDOW_SIZE).sum::<usize>()
+            ranker.get_num_ratings_to_end()
         );
         let next = result?;
         if next.is_none() {

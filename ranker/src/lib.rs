@@ -71,7 +71,7 @@ pub struct Ranker<T> {
     projects: Vec<Project<T>>,
     no_projects: bool,
 
-    pub window_size: usize,
+    window_size: usize,
     window: Vec<u16>,
     item_a: usize,
     item_b: usize,
@@ -400,6 +400,10 @@ where
             .unwrap()
     }
 
+    pub fn get_num_ratings_to_end(&self) -> usize {
+        (1..self.window_size).sum()
+    }
+
     fn get_new_window(&mut self) -> bool {
         let mut all_done = true;
         for bitmask in &self.projects[self.selected_project].bitmasks {
@@ -453,7 +457,7 @@ where
             }
 
             self.window.push(i);
-            if self.window.len() == DEFUALT_WINDOW_SIZE {
+            if self.window.len() == self.window_size {
                 break;
             }
         }
