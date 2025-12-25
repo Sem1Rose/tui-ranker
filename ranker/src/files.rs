@@ -1,4 +1,4 @@
-use crate::bitmask::BitMask;
+use crate::bitfield::BitField;
 use csv::{ReaderBuilder, WriterBuilder};
 use std::{fs::File, io::prelude::*, path::Path, str::FromStr};
 
@@ -20,7 +20,7 @@ pub fn get_cached_items<T: FromStr>(dir: &Path) -> anyhow::Result<Vec<(T, f32)>>
 
     Ok(items)
 }
-pub fn get_cached_results(dir: &Path) -> anyhow::Result<Vec<BitMask>> {
+pub fn get_cached_results(dir: &Path) -> anyhow::Result<Vec<BitField>> {
     let mut file = File::open(dir.join(".results"))?;
     let mut results = vec![];
 
@@ -42,7 +42,7 @@ pub fn get_cached_results(dir: &Path) -> anyhow::Result<Vec<BitMask>> {
 
     Ok(results)
 }
-pub fn get_cached_bitmasks(dir: &Path) -> anyhow::Result<Vec<BitMask>> {
+pub fn get_cached_bitmasks(dir: &Path) -> anyhow::Result<Vec<BitField>> {
     let mut file = File::open(dir.join(".bitmasks"))?;
     let mut bitmasks = vec![];
 
@@ -78,7 +78,7 @@ pub fn cache_items<T: ToString + Clone>(dir: &Path, items: &[(T, f32)]) -> anyho
 
     Ok(())
 }
-pub fn cache_results(dir: &Path, results: &[BitMask]) -> anyhow::Result<()> {
+pub fn cache_results(dir: &Path, results: &[BitField]) -> anyhow::Result<()> {
     let mut file: File = File::create(dir.join(".results"))?;
 
     if results.is_empty() {
@@ -102,7 +102,7 @@ pub fn cache_results(dir: &Path, results: &[BitMask]) -> anyhow::Result<()> {
 
     Ok(())
 }
-pub fn cache_bitmasks(dir: &Path, bitmasks: &[BitMask]) -> anyhow::Result<()> {
+pub fn cache_bitmasks(dir: &Path, bitmasks: &[BitField]) -> anyhow::Result<()> {
     let mut file: File = File::create(dir.join(".bitmasks"))?;
 
     if bitmasks.is_empty() {

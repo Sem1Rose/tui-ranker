@@ -1,5 +1,5 @@
 // use anyhow::bail;
-use bitmask::BitMask;
+use bitfield::BitField;
 use log::{debug, error, info};
 use rand::seq::{IteratorRandom, SliceRandom};
 use std::{
@@ -11,7 +11,7 @@ use std::{
     usize, vec,
 };
 
-mod bitmask;
+mod bitfield;
 mod elo;
 mod files;
 
@@ -58,8 +58,8 @@ pub struct Project<T> {
     dir: PathBuf,
 
     items: Vec<(T, f32)>,
-    bitmasks: Vec<BitMask>,
-    results: Vec<BitMask>,
+    bitmasks: Vec<BitField>,
+    results: Vec<BitField>,
 
     pub num_rated_items: usize,
 }
@@ -84,13 +84,13 @@ impl<T> Ranker<T>
 where
     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
 {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
+    pub fn new() -> Self {
+        Self {
             item_a_won: true,
             window_size: DEFUALT_WINDOW_SIZE,
             no_projects: true,
             ..Default::default()
-        })
+        }
     }
 
     pub fn with_window_size(mut self, custom_window_size: usize) -> Self {
@@ -102,7 +102,7 @@ where
         self.load_projects_from(".".into())
     }
     pub fn load_projects_from(mut self, root: PathBuf) -> Result<Self> {
-        self.root = PathBuf::from(root).join(".ranker");
+        self.root = PathBuf::from(root).join("ranker");
         if !self.root.exists() {
             std::fs::create_dir(&self.root)?;
         }
@@ -281,7 +281,7 @@ where
             }
 
             if a_rated_all_window {
-                info!(
+                debug!(
                     "{} rated all the window, getting a new item from the window...",
                     self.item_a
                 );
@@ -662,12 +662,12 @@ where
             self.results = vec![];
 
             for i in 0..self.items.len() as u16 {
-                let mut new_bitmask: BitMask = vec![].into();
+                let mut new_bitmask: BitField = vec![].into();
                 new_bitmask.fit_to_number_of_bits(self.items.len() as u16 - 1);
                 new_bitmask.set_bit(i);
                 self.bitmasks.push(new_bitmask);
 
-                let mut result: BitMask = vec![].into();
+                let mut result: BitField = vec![].into();
                 result.fit_to_number_of_bits(self.items.len() as u16 - 1);
                 self.results.push(result);
             }
@@ -699,14 +699,14 @@ where
             for new_item in new_items.into_iter() {
                 debug!("Adding item {:?}", new_item);
 
-                let mut new_bitmask: BitMask = vec![].into();
+                let mut new_bitmask: BitField = vec![].into();
                 new_bitmask.fit_to_number_of_bits(self.items.len() as u16 - 1);
                 new_bitmask.set_bit(self.items.len() as u16);
                 self.bitmasks.push(new_bitmask);
 
                 self.items.push((new_item, f32::NAN));
 
-                let mut new_result: BitMask = vec![].into();
+                let mut new_result: BitField = vec![].into();
                 new_result.fit_to_number_of_bits(self.items.len() as u16 - 1);
                 self.results.push(new_result);
             }

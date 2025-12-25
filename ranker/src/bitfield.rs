@@ -1,7 +1,7 @@
 #[derive(Debug, PartialEq, Clone)]
-pub struct BitMask(Vec<u8>);
+pub struct BitField(Vec<u8>);
 
-impl BitMask {
+impl BitField {
     // pub fn append(&mut self, value: u8) {
     //     self.0.push(value);
     // }
@@ -148,7 +148,7 @@ impl BitMask {
     }
 }
 
-impl From<u16> for BitMask {
+impl From<u16> for BitField {
     // TODO: check if the num is larger than the max num items 2040
     fn from(value: u16) -> Self {
         let div = value >> 3; // div by 8
@@ -160,7 +160,7 @@ impl From<u16> for BitMask {
         Self(vec)
     }
 }
-impl From<Vec<u8>> for BitMask {
+impl From<Vec<u8>> for BitField {
     fn from(value: Vec<u8>) -> Self {
         Self(value)
     }
@@ -172,16 +172,16 @@ mod bitmask_tests {
 
     #[test]
     fn test_from() {
-        let bitmask: BitMask = 10.into();
+        let bitmask: BitField = 10.into();
         assert_eq!(bitmask, vec![0, 0b00000100].into());
-        let bitmask: BitMask = 0.into();
+        let bitmask: BitField = 0.into();
         assert_eq!(bitmask, vec![0b00000001].into())
     }
 
     #[test]
     #[should_panic = "index out of bounds: trying to get byte 2 but the length is 2"]
     fn test_and_or() {
-        let mut bitmask: BitMask = 10.into();
+        let mut bitmask: BitField = 10.into();
         assert_eq!(bitmask, vec![0, 0x04].into());
 
         bitmask.set_bit(5);
@@ -195,7 +195,7 @@ mod bitmask_tests {
     #[test]
     #[should_panic = "trying to shrink by 1 bytes but bitmask size is 0"]
     fn test_shrink_extend() {
-        let mut bitmask: BitMask = vec![].into();
+        let mut bitmask: BitField = vec![].into();
 
         bitmask.extend_by_bytes(1);
         assert_eq!(bitmask, vec![0].into());
@@ -208,7 +208,7 @@ mod bitmask_tests {
 
     #[test]
     fn test_discard() {
-        let mut bitmask: BitMask = 0.into();
+        let mut bitmask: BitField = 0.into();
         bitmask.set_bit(8);
         bitmask.discard_bit(0);
         bitmask.discard_bit(7);
