@@ -1,5 +1,6 @@
 mod app;
 mod drawer;
+mod helpers;
 mod image_backend;
 mod popups;
 mod screens;
@@ -7,6 +8,7 @@ mod types;
 
 use app::App;
 use drawer::Drawer;
+use helpers::*;
 
 // const FRAME_RATE: f32 = 60.0;
 // const TICK_RATE: f32 = 10.0;

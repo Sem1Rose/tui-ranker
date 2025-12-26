@@ -53,18 +53,6 @@ impl From<std::io::Error> for ProjectsError {
 }
 
 #[derive(Default)]
-pub struct Project<T> {
-    pub name: String,
-    dir: PathBuf,
-
-    items: Vec<(T, f32)>,
-    bitmasks: Vec<BitField>,
-    results: Vec<BitField>,
-
-    pub num_rated_items: usize,
-}
-
-#[derive(Default)]
 pub struct Ranker<T> {
     selected_project: usize,
     root: PathBuf,
@@ -99,10 +87,10 @@ where
     }
 
     pub fn load_projects(self) -> Result<Self> {
-        self.load_projects_from(".".into())
+        self.load_projects_from(&".".into())
     }
-    pub fn load_projects_from(mut self, root: PathBuf) -> Result<Self> {
-        self.root = PathBuf::from(root).join("ranker");
+    pub fn load_projects_from(mut self, root: &PathBuf) -> Result<Self> {
+        self.root = root.join("ranker");
         if !self.root.exists() {
             std::fs::create_dir(&self.root)?;
         }
@@ -147,7 +135,7 @@ where
         if self.window.len() < 2 {
             error!(
                 "selected project has less than two items: {}",
-                self.get_project()?.name
+                self.get_selected_project()?.name
             );
         } else {
             debug!("got window {:?}", self.window);
@@ -166,12 +154,22 @@ where
 
         Ok(())
     }
-    pub fn get_project(&self) -> Result<&Project<T>> {
+    pub fn get_selected_project(&self) -> Result<&Project<T>> {
         if self.no_projects {
             Err(ProjectsError::NoProjects)
         } else {
             Ok(&self.projects[self.selected_project])
         }
+    }
+    pub fn get_project_by_index(&self, index: usize) -> Result<&Project<T>> {
+        if index >= self.projects.len() {
+            Err(ProjectsError::NotEnoughItems)
+        } else {
+            Ok(&self.projects[index])
+        }
+    }
+    pub fn get_num_projects(&self) -> usize {
+        self.projects.len()
     }
     pub fn get_project_names(&self) -> Vec<String> {
         self.projects.iter().map(|p| p.name.clone()).collect()
@@ -201,8 +199,9 @@ where
         // bail!("Couldn't find project {}", name)
         Ok(false)
     }
-    pub fn create_project(&mut self, name: String) -> Result<()> {
-        self.projects.push(Project::new(&self.root, name)?);
+    pub fn create_project(&mut self, name: &str) -> Result<()> {
+        self.projects
+            .push(Project::new(&self.root, name.to_string())?);
         self.selected_project = self.projects.len() - 1;
         self.window = vec![];
         self.no_projects = false;
@@ -248,7 +247,7 @@ where
         if self.window.len() < 2 {
             error!(
                 "selected project has less than two items: {}",
-                self.get_project()?.name
+                self.get_selected_project()?.name
             );
             return Err(ProjectsError::NotEnoughItems);
         }
@@ -368,13 +367,6 @@ where
         Ok(())
     }
 
-    pub fn get_total_ratings(&self) -> usize {
-        (self.projects[self.selected_project].items.len()
-            * self.projects[self.selected_project].items.len()
-            - self.projects[self.selected_project].items.len())
-            / 2
-    }
-
     pub fn get_item_scores(&self) -> Vec<(T, f32)> {
         let mut sorted = self.projects[self.selected_project]
             .items
@@ -400,7 +392,7 @@ where
             .unwrap()
     }
 
-    pub fn get_num_ratings_to_end(&self) -> usize {
+    pub fn get_num_ratings_in_window(&self) -> usize {
         (1..self.window_size).sum()
     }
 
@@ -613,6 +605,19 @@ where
 //     }
 // }
 
+#[derive(Default)]
+pub struct Project<T> {
+    pub name: String,
+    dir: PathBuf,
+
+    items: Vec<(T, f32)>,
+    bitmasks: Vec<BitField>,
+    results: Vec<BitField>,
+
+    pub total_ratings: usize,
+    pub num_rated_items: usize,
+}
+
 impl<T> Project<T>
 where
     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
@@ -648,6 +653,14 @@ where
         self.items = files::get_cached_items(&self.dir)?;
         self.bitmasks = files::get_cached_bitmasks(&self.dir)?;
         self.results = files::get_cached_results(&self.dir)?;
+
+        self.num_rated_items = (self
+            .bitmasks
+            .iter()
+            .fold(0, |acc, x| acc + x.get_num_ones()) as usize
+            - self.bitmasks.len())
+            / 2;
+        self.total_ratings = (self.items.len() * self.items.len() - self.items.len()) / 2;
 
         Ok(self)
     }
@@ -712,15 +725,15 @@ where
             }
             // for bitmask in self.bitmasks.iter_mut() {
             // }
-
-            self.num_rated_items = (self
-                .bitmasks
-                .iter()
-                .fold(0, |acc, x| acc + x.get_num_ones())
-                as usize
-                - self.bitmasks.len())
-                / 2;
         }
+
+        self.num_rated_items = (self
+            .bitmasks
+            .iter()
+            .fold(0, |acc, x| acc + x.get_num_ones()) as usize
+            - self.bitmasks.len())
+            / 2;
+        self.total_ratings = (self.items.len() * self.items.len() - self.items.len()) / 2;
 
         self.cache_items()?;
         self.cache_bitmasks()?;

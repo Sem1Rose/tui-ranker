@@ -1,5 +1,8 @@
 use anyhow::Ok;
+use ranker::Ranker;
 use ratatui::Frame;
+use ratatui::style::{Stylize, palette::tailwind::*};
+use ratatui::widgets::Block;
 
 use crate::image_backend::RatatuiImage;
 use crate::popups::*;
@@ -10,39 +13,43 @@ pub struct Drawer {
 
     current_screen: Option<Screens>,
     active_popup: Option<Popups>,
+
+    main_screen: MainScreen,
 }
+
 impl Drawer {
     pub fn new() -> Self {
         Drawer {
             image_backend: RatatuiImage::new(),
             current_screen: None,
-            active_popup: Some(Popups::ProjectSelect(ProjectSelect::new())),
+            active_popup: Some(Popups::default()),
+            main_screen: MainScreen::default(),
         }
     }
 
-    pub fn render_app(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
+    pub fn render_app(&mut self, frame: &mut Frame, ranker: &Ranker<String>) -> anyhow::Result<()> {
         self.image_backend.update();
 
         self.draw_current_screen(frame)?;
 
         self.check_popups()?;
         if self.active_popup.is_some() {
-            self.draw_popup(frame)?;
+            self.draw_popup(frame, ranker)?;
         }
 
         Ok(())
     }
 
     fn draw_current_screen(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
-        if self.current_screen.is_none() {
-            return Ok(());
-        }
-
-        match self.current_screen.as_mut().unwrap() {
-            Screens::MainScreen(main_screen) => {
-                main_screen.render(frame)?;
+        if let Some(current_screen) = self.current_screen.as_ref() {
+            match current_screen {
+                Screens::MainScreen => {
+                    // self.main_screen.render(frame)?;
+                }
+                _ => {}
             }
-            _ => {}
+        } else {
+            frame.render_widget(Block::new().bg(SLATE.c900), frame.area());
         }
 
         Ok(())
@@ -62,18 +69,27 @@ impl Drawer {
         Ok(())
     }
 
-    fn draw_popup(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
-        if self.active_popup.is_none() {
-            return Ok(());
-        }
-
-        match self.active_popup.as_mut().unwrap() {
-            Popups::ProjectSelect(project_select) => {
-                project_select.render(frame)?;
+    fn draw_popup(&mut self, frame: &mut Frame, ranker: &Ranker<String>) -> anyhow::Result<()> {
+        if let Some(active_popup) = self.active_popup.as_mut() {
+            match active_popup {
+                Popups::ProjectSelect(project_select) => {
+                    project_select.render(frame, ranker)?;
+                }
+                _ => {}
             }
-            _ => {}
+        } else {
         }
 
         Ok(())
+    }
+
+    fn close_popups(&mut self) {
+        self.active_popup = None
+    }
+
+    fn open_main_screen(&mut self) {
+        self.close_popups();
+
+        self.current_screen = Some(Screens::MainScreen);
     }
 }
