@@ -1,10 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Flex, Layout, Rect},
-    style::{
-        Color, Style, Stylize,
-        palette::{material, tailwind},
-    },
+    style::{Color, Style, Stylize},
     symbols::border,
     widgets::{Block, Clear, Padding},
 };

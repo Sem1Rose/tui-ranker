@@ -1,6 +1,6 @@
 // use anyhow::bail;
 use bitfield::BitField;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use rand::seq::{IteratorRandom, SliceRandom};
 use std::{
     fmt,
@@ -110,6 +110,7 @@ where
                 .ok()
             }) // `new` will return an error if it can't create the necessary files, so the object is skipped
             .collect();
+        self.projects.sort_by(|a, b| a.name.cmp(&b.name));
         if !self.projects.is_empty() {
             self.no_projects = false;
             // self.projects
@@ -133,7 +134,7 @@ where
         }
 
         if self.window.len() < 2 {
-            error!(
+            warn!(
                 "selected project has less than two items: {}",
                 self.get_selected_project()?.name
             );
@@ -173,6 +174,17 @@ where
     }
     pub fn get_project_names(&self) -> Vec<String> {
         self.projects.iter().map(|p| p.name.clone()).collect()
+    }
+    pub fn rename_project(&mut self, name: &str, new_name: &str) -> Result<()> {
+        if let Some(index) = self.try_find_project(name) {
+            self.projects[index].rename(&self.root, new_name)?;
+
+            // self.select_project(index)?;
+
+            Ok(())
+        } else {
+            Err(ProjectsError::NoProjects)
+        }
     }
     pub fn try_find_project(&self, name: &str) -> Option<usize> {
         self.projects.iter().position(|p| p.name == name)
@@ -245,7 +257,7 @@ where
         }
 
         if self.window.len() < 2 {
-            error!(
+            warn!(
                 "selected project has less than two items: {}",
                 self.get_selected_project()?.name
             );
@@ -632,6 +644,14 @@ where
         .load()
     }
 
+    pub fn rename(&mut self, root: &PathBuf, name: &str) -> Result<()> {
+        fs::rename(&self.dir, root.join(name))?;
+        self.dir = root.join(&name);
+        self.name = name.to_string();
+
+        Ok(())
+    }
+
     fn ensure_files_exist(self) -> Result<Self> {
         if !self.dir.exists() {
             std::fs::create_dir(&self.dir)?;
@@ -669,7 +689,7 @@ where
         let cached_items = self.items.clone();
         self.items = vec![];
 
-        if cached_items.is_empty() {
+        if cached_items.is_empty() || items.is_empty() {
             self.items = items.into_iter().map(|x| (x, f32::NAN)).collect();
             self.bitmasks = vec![];
             self.results = vec![];
@@ -698,8 +718,6 @@ where
                     for rs in self.results.iter_mut() {
                         rs.discard_bit(i as u16);
                     }
-                } else {
-                    self.items.push(cached_item.clone());
                 }
             }
 
@@ -713,18 +731,21 @@ where
                 debug!("Adding item {:?}", new_item);
 
                 let mut new_bitmask: BitField = vec![].into();
-                new_bitmask.fit_to_number_of_bits(self.items.len() as u16 - 1);
+                new_bitmask.fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
                 new_bitmask.set_bit(self.items.len() as u16);
                 self.bitmasks.push(new_bitmask);
 
                 self.items.push((new_item, f32::NAN));
 
                 let mut new_result: BitField = vec![].into();
-                new_result.fit_to_number_of_bits(self.items.len() as u16 - 1);
+                new_result.fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
                 self.results.push(new_result);
             }
-            // for bitmask in self.bitmasks.iter_mut() {
-            // }
+
+            for i in 0..self.items.len() {
+                self.bitmasks[i].fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
+                self.results[i].fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
+            }
         }
 
         self.num_rated_items = (self

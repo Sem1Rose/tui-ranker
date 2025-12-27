@@ -4,6 +4,7 @@ use ratatui::Frame;
 use ratatui::style::{Stylize, palette::tailwind::*};
 use ratatui::widgets::Block;
 
+use crate::KeyEventHandler;
 use crate::image_backend::RatatuiImage;
 use crate::popups::*;
 use crate::screens::*;
@@ -11,8 +12,8 @@ use crate::screens::*;
 pub struct Drawer {
     image_backend: RatatuiImage,
 
-    current_screen: Option<Screens>,
-    active_popup: Option<Popups>,
+    pub current_screen: Option<Screens>,
+    pub active_popup: Option<Popups>,
 
     main_screen: MainScreen,
 }
@@ -27,26 +28,34 @@ impl Drawer {
         }
     }
 
-    pub fn render_app(&mut self, frame: &mut Frame, ranker: &Ranker<String>) -> anyhow::Result<()> {
+    pub fn render_app(
+        &mut self,
+        frame: &mut Frame,
+        ranker: &Ranker<String>,
+        key_event_handler: &mut KeyEventHandler,
+    ) -> anyhow::Result<()> {
         self.image_backend.update();
 
-        self.draw_current_screen(frame)?;
+        self.draw_current_screen(frame, key_event_handler)?;
 
         self.check_popups()?;
         if self.active_popup.is_some() {
-            self.draw_popup(frame, ranker)?;
+            self.draw_popup(frame, ranker, key_event_handler)?;
         }
 
         Ok(())
     }
 
-    fn draw_current_screen(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
+    fn draw_current_screen(
+        &mut self,
+        frame: &mut Frame,
+        key_event_handler: &mut KeyEventHandler,
+    ) -> anyhow::Result<()> {
         if let Some(current_screen) = self.current_screen.as_ref() {
             match current_screen {
                 Screens::MainScreen => {
-                    // self.main_screen.render(frame)?;
+                    self.main_screen.render(frame, key_event_handler)?;
                 }
-                _ => {}
             }
         } else {
             frame.render_widget(Block::new().bg(SLATE.c900), frame.area());
@@ -62,20 +71,23 @@ impl Drawer {
                     ProjectSelectPhase::Done => {}
                     _ => {}
                 },
-                _ => {}
             }
         }
 
         Ok(())
     }
 
-    fn draw_popup(&mut self, frame: &mut Frame, ranker: &Ranker<String>) -> anyhow::Result<()> {
+    fn draw_popup(
+        &mut self,
+        frame: &mut Frame,
+        ranker: &Ranker<String>,
+        key_event_handler: &mut KeyEventHandler,
+    ) -> anyhow::Result<()> {
         if let Some(active_popup) = self.active_popup.as_mut() {
             match active_popup {
                 Popups::ProjectSelect(project_select) => {
-                    project_select.render(frame, ranker)?;
+                    project_select.render(frame, ranker, key_event_handler)?;
                 }
-                _ => {}
             }
         } else {
         }
