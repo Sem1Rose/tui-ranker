@@ -1,11 +1,8 @@
-use std::ops::Add;
-
 use crate::App;
 use crate::KeyEventHandler;
-use crate::helpers::{add_padding, popup};
+use crate::helpers::{add_padding, dynamic_popup};
 use crate::key_event_handler::Data;
 use crate::popups::Popups;
-use anyhow::Ok;
 use log::error;
 use ranker::Ranker;
 use ratatui::{
@@ -19,6 +16,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Gauge, Padding, Scrollbar, ScrollbarState},
 };
+use std::ops::Add;
 use tui_textarea::TextArea;
 
 #[derive(Default)]
@@ -43,7 +41,7 @@ pub struct ProjectSelect {
     add_project_input_disable: bool,
     add_project_name_input: TextArea<'static>,
     add_project_path_input: TextArea<'static>,
-    add_project_edit: bool,
+    edit_project: bool,
 }
 
 impl ProjectSelect {
@@ -57,24 +55,18 @@ impl ProjectSelect {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.item = 0;
                 match data {
-                    Data::Direction(true) => {
-                        project_select.tab += 1;
-                        if project_select.tab > 1 {
-                            project_select.tab = 0;
-                        }
-                    }
-                    Data::Direction(false) => {
-                        project_select.tab = project_select.tab.checked_sub(1).unwrap_or(1);
+                    Data::Direction(_) => {
+                        project_select.tab = 1;
                     }
                     _ => {}
                 }
             }
         });
 
-        let popup_area = popup(
+        let popup_area = dynamic_popup(
             frame,
-            Constraint::Percentage(45),
-            Constraint::Percentage(50),
+            Some(25),
+            3.5,
             tailwind::BLUE.c950,
             "  Project Select  ",
             Style::new().fg(material::YELLOW.c800),
@@ -87,429 +79,7 @@ impl ProjectSelect {
 
         self.render_projects_list(frame, right, ranker, key_event_handler);
 
-        key_event_handler.bind_tab((Some(1), None), |app, data| {
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                if project_select.add_project_input_disable {
-                    project_select.item = 0;
-                    project_select.add_project_input_disable = false;
-                    if project_select.add_project_edit {
-                        project_select.add_project_edit = false;
-
-                        project_select.add_project_name_input = TextArea::default();
-                        project_select.add_project_path_input = TextArea::default();
-                    }
-
-                    match data {
-                        Data::Direction(true) => {
-                            project_select.tab += 1;
-                            if project_select.tab > 1 {
-                                project_select.tab = 0;
-                            }
-                        }
-                        Data::Direction(false) => {
-                            project_select.tab = project_select.tab.checked_sub(1).unwrap_or(1);
-                        }
-                        _ => {}
-                    }
-                } else {
-                    project_select.add_project_input_disable = false;
-                    match data {
-                        Data::Direction(true) => {
-                            if project_select.item
-                                == if project_select.add_project_edit {
-                                    3
-                                } else {
-                                    2
-                                }
-                            {
-                                project_select.item = 0;
-                                project_select.add_project_input_disable = false;
-                                if project_select.add_project_edit {
-                                    project_select.add_project_edit = false;
-
-                                    project_select.add_project_name_input = TextArea::default();
-                                    project_select.add_project_path_input = TextArea::default();
-                                }
-
-                                project_select.tab += 1;
-                                if project_select.tab > 1 {
-                                    project_select.tab = 0;
-                                }
-                            } else {
-                                project_select.item = project_select.item.add(1).min(
-                                    if project_select.add_project_edit {
-                                        3
-                                    } else {
-                                        2
-                                    },
-                                );
-                            }
-                        }
-                        Data::Direction(false) => {
-                            project_select.item = project_select.item.checked_sub(1).unwrap_or(0);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        });
-        key_event_handler.bind_vertical((Some(1), None), |app, data| {
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                if project_select.add_project_input_disable {
-                    project_select.add_project_input_disable = false;
-                } else {
-                    match data {
-                        Data::Direction(true) => {
-                            if !project_select.add_project_edit || project_select.item < 2 {
-                                project_select.item = project_select.item.add(1).min(2);
-                            }
-                        }
-                        Data::Direction(false) => {
-                            if project_select.add_project_edit && project_select.item >= 2 {
-                                project_select.item = 1;
-                            } else {
-                                project_select.item =
-                                    project_select.item.checked_sub(1).unwrap_or(0);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        });
-        if self.add_project_edit {
-            key_event_handler.bind_horizontal((Some(1), Some(2)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    if project_select.add_project_input_disable {
-                        project_select.add_project_input_disable = false;
-                    } else {
-                        match data {
-                            Data::Direction(true) => {
-                                project_select.item = project_select.item.add(1).min(3);
-                            }
-                            Data::Direction(false) => {
-                                project_select.item -= 1;
-                                if project_select.item < 2 {
-                                    project_select.item = 2;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            });
-            key_event_handler.bind_horizontal((Some(1), Some(3)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    if project_select.add_project_input_disable {
-                        project_select.add_project_input_disable = false;
-                    } else {
-                        match data {
-                            Data::Direction(true) => {
-                                project_select.item = project_select.item.add(1).min(3);
-                            }
-                            Data::Direction(false) => {
-                                project_select.item -= 1;
-                                if project_select.item < 2 {
-                                    project_select.item = 2;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            });
-        }
-
-        let tab_selected = self.tab == 1;
-        self.add_project_name_input
-            .set_style(Style::new().fg(if tab_selected {
-                if self.item == 0 && !self.add_project_input_disable {
-                    tailwind::SLATE.c300
-                } else {
-                    tailwind::STONE.c400
-                }
-            } else {
-                tailwind::STONE.c500
-            }));
-        self.add_project_name_input.set_cursor_style(
-            Style::new()
-                .fg(if tab_selected {
-                    if self.item == 0 && !self.add_project_input_disable {
-                        tailwind::SLATE.c300
-                    } else {
-                        tailwind::STONE.c400
-                    }
-                } else {
-                    tailwind::STONE.c500
-                })
-                .add_modifier(if tab_selected {
-                    if self.item == 0 && !self.add_project_input_disable {
-                        Modifier::REVERSED
-                    } else {
-                        Modifier::default()
-                    }
-                } else {
-                    Modifier::default()
-                }),
-        );
-        self.add_project_name_input.set_block(
-            Block::bordered()
-                .border_type(ratatui::widgets::BorderType::Thick)
-                .style(Style::new().fg(if tab_selected {
-                    if self.item == 0 && !self.add_project_input_disable {
-                        if !self.add_project_name_input.lines()[0].is_empty() {
-                            material::BLUE.c500
-                        } else {
-                            material::RED.c600
-                        }
-                    } else {
-                        tailwind::SLATE.c500
-                    }
-                } else {
-                    tailwind::STONE.c600
-                }))
-                .title(" name ")
-                .title_style(Style::new().fg(if tab_selected {
-                    if self.item == 0 && !self.add_project_input_disable {
-                        material::BLUE.c600
-                    } else {
-                        if !self.add_project_name_input.lines()[0].is_empty() {
-                            material::BLUE.c600
-                        } else {
-                            material::RED.c600
-                        }
-                    }
-                } else {
-                    tailwind::SLATE.c600
-                })),
-        );
-        self.add_project_name_input
-            .set_placeholder_text("Enter the project name");
-        self.add_project_name_input
-            .set_placeholder_style(Style::new().fg(material::GRAY.c700));
-
-        self.add_project_path_input
-            .set_style(Style::new().fg(if tab_selected {
-                if self.item == 1 && !self.add_project_input_disable {
-                    tailwind::SLATE.c300
-                } else {
-                    tailwind::STONE.c400
-                }
-            } else {
-                tailwind::STONE.c500
-            }));
-        self.add_project_path_input.set_cursor_style(
-            Style::new()
-                .fg(if tab_selected {
-                    if self.item == 1 && !self.add_project_input_disable {
-                        tailwind::SLATE.c300
-                    } else {
-                        tailwind::STONE.c400
-                    }
-                } else {
-                    tailwind::STONE.c500
-                })
-                .add_modifier(if tab_selected {
-                    if self.item == 1 && !self.add_project_input_disable {
-                        Modifier::REVERSED
-                    } else {
-                        Modifier::default()
-                    }
-                } else {
-                    Modifier::default()
-                }),
-        );
-        self.add_project_path_input.set_block(
-            Block::bordered()
-                .border_type(ratatui::widgets::BorderType::Thick)
-                .style(Style::new().fg(if tab_selected {
-                    if self.item == 1 && !self.add_project_input_disable {
-                        if std::path::PathBuf::from(&self.add_project_path_input.lines()[0])
-                            .is_dir()
-                        {
-                            material::BLUE.c500
-                        } else {
-                            material::RED.c600
-                        }
-                    } else {
-                        tailwind::SLATE.c500
-                    }
-                } else {
-                    tailwind::STONE.c600
-                }))
-                .title(" path ")
-                .title_style(Style::new().fg(if tab_selected {
-                    if self.item == 1 && !self.add_project_input_disable {
-                        material::BLUE.c600
-                    } else {
-                        if std::path::PathBuf::from(&self.add_project_path_input.lines()[0])
-                            .is_dir()
-                        {
-                            material::BLUE.c600
-                        } else {
-                            material::RED.c600
-                        }
-                    }
-                } else {
-                    tailwind::SLATE.c600
-                })),
-        );
-        self.add_project_path_input
-            .set_placeholder_text("Enter the project path");
-        self.add_project_path_input
-            .set_placeholder_style(Style::new().fg(material::GRAY.c700));
-
-        if !self.add_project_input_disable {
-            key_event_handler.bind_input_field((Some(1), Some(1)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    if let Data::Key(key_event) = data {
-                        project_select.add_project_path_input.input(key_event);
-                    }
-                }
-            });
-            key_event_handler.bind_input_field((Some(1), Some(0)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    if let Data::Key(key_event) = data {
-                        project_select.add_project_name_input.input(key_event);
-                    }
-                }
-            });
-        }
-
-        let [name_input_area, _, path_input_area, _, actions_area] = Layout::vertical([
-            Constraint::Length(3),
-            Constraint::Length(1),
-            Constraint::Length(3),
-            Constraint::Length(2),
-            Constraint::Length(1),
-        ])
-        .areas(add_padding(
-            left,
-            Padding {
-                left: 1,
-                right: 2,
-                top: 1,
-                bottom: 0,
-            },
-        ));
-
-        frame.render_widget(&self.add_project_name_input, name_input_area);
-        frame.render_widget(&self.add_project_path_input, path_input_area);
-
-        let valid = self.validate_inputs();
-        if self.add_project_edit {
-            frame.render_widget(
-                Line::from(vec![
-                    Span::from(" Edit ").style(
-                        Style::new()
-                            .fg(if tab_selected && self.item == 2 {
-                                tailwind::SLATE.c300
-                            } else {
-                                tailwind::SLATE.c600
-                            })
-                            .bg(if tab_selected && self.item == 2 {
-                                if valid {
-                                    material::BLUE.c600
-                                } else {
-                                    tailwind::SLATE.c800
-                                }
-                            } else {
-                                tailwind::SLATE.c950
-                            }),
-                    ),
-                    Span::from(" "),
-                    Span::from(" No ").style(
-                        Style::new()
-                            .fg(if tab_selected && self.item == 3 {
-                                tailwind::SLATE.c300
-                            } else {
-                                tailwind::RED.c500
-                            })
-                            .bg(if tab_selected && self.item == 3 {
-                                material::RED.c500
-                            } else {
-                                tailwind::SLATE.c950
-                            }),
-                    ),
-                ]),
-                Layout::horizontal([Constraint::Length(11)])
-                    .flex(ratatui::layout::Flex::Center)
-                    .split(actions_area)[0],
-            );
-        } else {
-            frame.render_widget(
-                Line::from("Add").alignment(Alignment::Center).style(
-                    Style::new()
-                        .fg(if tab_selected && self.item == 2 {
-                            tailwind::SLATE.c300
-                        } else {
-                            tailwind::SLATE.c600
-                        })
-                        .bg(if tab_selected && self.item == 2 {
-                            if valid {
-                                material::BLUE.c700
-                            } else {
-                                tailwind::SLATE.c800
-                            }
-                        } else {
-                            tailwind::SLATE.c950
-                        }),
-                ),
-                Layout::horizontal([Constraint::Length(5)])
-                    .flex(ratatui::layout::Flex::Center)
-                    .split(actions_area)[0],
-            );
-        }
-
-        key_event_handler.bind_enter((Some(1), None), |app, _| {
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                if project_select.add_project_input_disable {
-                    project_select.add_project_input_disable = false;
-                } else {
-                    if project_select.item < 2 {
-                        project_select.item += 1;
-                    } else if project_select.item == 2 && project_select.validate_inputs() {
-                        let name = project_select.add_project_name_input.lines()[0].to_string();
-                        let path = project_select.add_project_path_input.lines()[0].to_string();
-
-                        project_select.add_project_name_input = TextArea::default();
-                        project_select.add_project_path_input = TextArea::default();
-
-                        project_select.tab = 0;
-                        project_select.item = 0;
-                        let edit = project_select.add_project_edit;
-                        project_select.add_project_edit = false;
-
-                        if edit {
-                            app.edit_project(name, path).unwrap();
-                        } else {
-                            app.create_project(name, path).unwrap();
-                        }
-                    } else if project_select.item == 3 {
-                        project_select.add_project_name_input = TextArea::default();
-                        project_select.add_project_path_input = TextArea::default();
-
-                        project_select.tab = 0;
-                        project_select.item = 0;
-                        project_select.add_project_edit = false;
-                    }
-                }
-            }
-        });
-
-        key_event_handler.bind_esc((Some(1), None), |app, _| {
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                project_select.add_project_input_disable = true;
-            }
-        });
+        self.render_add_edit_project(frame, left, ranker, key_event_handler);
 
         Ok(())
     }
@@ -552,6 +122,8 @@ impl ProjectSelect {
 
         key_event_handler.bind_vertical((Some(0), None), Self::vscroll_projects_list);
         key_event_handler.bind_enter((Some(0), Some(0)), |app, _| {
+            app.select_project().unwrap();
+
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.phase = Phase::Done;
             }
@@ -560,6 +132,35 @@ impl ProjectSelect {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.project_list_show_delete_confirmation = false;
                 project_select.item = 0;
+            }
+        });
+        key_event_handler.bind_key((Some(0), None), 'a', |app, _| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.item = 0;
+                project_select.tab = 1;
+            }
+        });
+        key_event_handler.bind_key((Some(0), None), 'e', |app, _| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                let name = &app
+                    .ranker
+                    .get_project_by_index(project_select.project_list_selected_item)
+                    .unwrap()
+                    .name;
+                project_select.add_project_name_input = TextArea::from([name]);
+                project_select.add_project_path_input =
+                    TextArea::from([app.project_table.get(name).unwrap()]);
+
+                project_select.edit_project = true;
+                project_select.add_project_input_disable = false;
+                project_select.tab = 1;
+                project_select.item = 0;
+            }
+        });
+        key_event_handler.bind_key((Some(0), None), 'd', |app, _| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.project_list_show_delete_confirmation = true;
+                project_select.item = 2;
             }
         });
 
@@ -738,7 +339,8 @@ impl ProjectSelect {
                 project_select.add_project_path_input =
                     TextArea::from([app.project_table.get(name).unwrap()]);
 
-                project_select.add_project_edit = true;
+                project_select.edit_project = true;
+                project_select.add_project_input_disable = false;
                 project_select.tab = 1;
                 project_select.item = 0;
             }
@@ -937,11 +539,538 @@ impl ProjectSelect {
         }
     }
 
-    fn validate_inputs(&self) -> bool {
+    fn render_add_edit_project(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        ranker: &Ranker<String>,
+        key_event_handler: &mut KeyEventHandler,
+    ) {
+        if self.add_project_input_disable {
+            key_event_handler.bind_tab((Some(1), None), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.item = 0;
+                    project_select.add_project_input_disable = false;
+                    if project_select.edit_project {
+                        project_select.edit_project = false;
+
+                        project_select.add_project_name_input = TextArea::default();
+                        project_select.add_project_path_input = TextArea::default();
+                    }
+
+                    match data {
+                        Data::Direction(_) => {
+                            project_select.tab = 0;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        } else if self.edit_project {
+            key_event_handler.bind_tab((Some(1), Some(3)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    match data {
+                        // Data::Direction(true) => {
+                        //     project_select.add_project_edit = false;
+
+                        //     project_select.add_project_name_input = TextArea::default();
+                        //     project_select.add_project_path_input = TextArea::default();
+
+                        //     project_select.tab = 0;
+                        //     project_select.item = 0;
+                        // }
+                        Data::Direction(false) => {
+                            project_select.item -= 1;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+            key_event_handler.bind_tab((Some(1), Some(2)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    match data {
+                        Data::Direction(true) => {
+                            project_select.item += 1;
+                        }
+                        Data::Direction(false) => {
+                            project_select.item = 0;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+            key_event_handler.bind_tab((Some(1), None), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    match data {
+                        Data::Direction(true) => {
+                            project_select.item = 2;
+                        }
+                        Data::Direction(false) => {
+                            project_select.item = 0;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        } else {
+            key_event_handler.bind_tab((Some(1), Some(2)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    match data {
+                        Data::Direction(true) => {
+                            project_select.add_project_input_disable = false;
+
+                            project_select.tab = 0;
+                            project_select.item = 0;
+                        }
+                        Data::Direction(false) => {
+                            project_select.item = 0;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+            key_event_handler.bind_tab((Some(1), None), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    match data {
+                        Data::Direction(true) => {
+                            project_select.item = 2;
+                        }
+                        Data::Direction(false) => {
+                            project_select.item = 0;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+
+        key_event_handler.bind_vertical((Some(1), None), |app, data| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                if project_select.add_project_input_disable {
+                    project_select.add_project_input_disable = false;
+                } else {
+                    match data {
+                        Data::Direction(true) => {
+                            if !project_select.edit_project || project_select.item < 2 {
+                                project_select.item = project_select.item.add(1).min(2);
+                            }
+                        }
+                        Data::Direction(false) => {
+                            if project_select.edit_project && project_select.item >= 2 {
+                                project_select.item = 1;
+                            } else {
+                                project_select.item =
+                                    project_select.item.checked_sub(1).unwrap_or(0);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+
+        if self.edit_project {
+            if self.add_project_input_disable {
+                key_event_handler.bind_horizontal((Some(1), Some(2)), |app, data| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        project_select.add_project_input_disable = false;
+                    }
+                });
+                key_event_handler.bind_horizontal((Some(1), Some(3)), |app, data| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        project_select.add_project_input_disable = false;
+                    }
+                });
+            } else {
+                key_event_handler.bind_horizontal((Some(1), Some(2)), |app, data| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        match data {
+                            Data::Direction(true) => {
+                                project_select.item += 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+                key_event_handler.bind_horizontal((Some(1), Some(3)), |app, data| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        match data {
+                            Data::Direction(false) => {
+                                project_select.item -= 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
+        }
+
+        let tab_selected = self.tab == 1;
+        let name_valid = self.validate_name(ranker);
+        self.add_project_name_input
+            .set_style(Style::new().fg(if tab_selected {
+                if self.item == 0 && !self.add_project_input_disable {
+                    tailwind::SLATE.c300
+                } else {
+                    tailwind::STONE.c400
+                }
+            } else {
+                tailwind::STONE.c500
+            }));
+        self.add_project_name_input.set_cursor_style(
+            Style::new()
+                .fg(if tab_selected {
+                    if self.item == 0 && !self.add_project_input_disable {
+                        tailwind::SLATE.c300
+                    } else {
+                        tailwind::STONE.c400
+                    }
+                } else {
+                    tailwind::STONE.c500
+                })
+                .add_modifier(if tab_selected {
+                    if self.item == 0 && !self.add_project_input_disable {
+                        Modifier::REVERSED
+                    } else {
+                        Modifier::default()
+                    }
+                } else {
+                    Modifier::default()
+                }),
+        );
+        self.add_project_name_input.set_block(
+            Block::bordered()
+                .border_type(ratatui::widgets::BorderType::Thick)
+                .style(Style::new().fg(if tab_selected {
+                    if self.item == 0 && !self.add_project_input_disable {
+                        if name_valid {
+                            material::BLUE.c500
+                        } else {
+                            material::RED.c600
+                        }
+                    } else {
+                        tailwind::SLATE.c500
+                    }
+                } else {
+                    tailwind::STONE.c600
+                }))
+                .title(" name ")
+                .title_style(Style::new().fg(if tab_selected {
+                    if self.item == 0 && !self.add_project_input_disable {
+                        material::BLUE.c600
+                    } else {
+                        if name_valid {
+                            material::BLUE.c600
+                        } else {
+                            material::RED.c600
+                        }
+                    }
+                } else {
+                    tailwind::SLATE.c600
+                })),
+        );
+        self.add_project_name_input
+            .set_placeholder_text("Enter the project name");
+        self.add_project_name_input
+            .set_placeholder_style(Style::new().fg(material::GRAY.c700));
+
+        let path_valid = self.validate_path();
+        self.add_project_path_input
+            .set_style(Style::new().fg(if tab_selected {
+                if self.item == 1 && !self.add_project_input_disable {
+                    tailwind::SLATE.c300
+                } else {
+                    tailwind::STONE.c400
+                }
+            } else {
+                tailwind::STONE.c500
+            }));
+        self.add_project_path_input.set_cursor_style(
+            Style::new()
+                .fg(if tab_selected {
+                    if self.item == 1 && !self.add_project_input_disable {
+                        tailwind::SLATE.c300
+                    } else {
+                        tailwind::STONE.c400
+                    }
+                } else {
+                    tailwind::STONE.c500
+                })
+                .add_modifier(if tab_selected {
+                    if self.item == 1 && !self.add_project_input_disable {
+                        Modifier::REVERSED
+                    } else {
+                        Modifier::default()
+                    }
+                } else {
+                    Modifier::default()
+                }),
+        );
+        self.add_project_path_input.set_block(
+            Block::bordered()
+                .border_type(ratatui::widgets::BorderType::Thick)
+                .style(Style::new().fg(if tab_selected {
+                    if self.item == 1 && !self.add_project_input_disable {
+                        if path_valid {
+                            material::BLUE.c500
+                        } else {
+                            material::RED.c600
+                        }
+                    } else {
+                        tailwind::SLATE.c500
+                    }
+                } else {
+                    tailwind::STONE.c600
+                }))
+                .title(" path ")
+                .title_style(Style::new().fg(if tab_selected {
+                    if self.item == 1 && !self.add_project_input_disable {
+                        material::BLUE.c600
+                    } else {
+                        if path_valid {
+                            material::BLUE.c600
+                        } else {
+                            material::RED.c600
+                        }
+                    }
+                } else {
+                    tailwind::SLATE.c600
+                })),
+        );
+        self.add_project_path_input
+            .set_placeholder_text("Enter the project path");
+        self.add_project_path_input
+            .set_placeholder_style(Style::new().fg(material::GRAY.c700));
+
+        if !self.add_project_input_disable {
+            key_event_handler.bind_input_field((Some(1), Some(1)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    if let Data::Key(key_event) = data {
+                        project_select.add_project_path_input.input(key_event);
+                    }
+                }
+            });
+            key_event_handler.bind_input_field((Some(1), Some(0)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    if let Data::Key(key_event) = data {
+                        project_select.add_project_name_input.input(key_event);
+                    }
+                }
+            });
+        }
+
+        let [name_input_area, _, path_input_area, _, actions_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(2),
+            Constraint::Length(1),
+        ])
+        .areas(add_padding(
+            area,
+            Padding {
+                left: 1,
+                right: 2,
+                top: 1,
+                bottom: 0,
+            },
+        ));
+
+        frame.render_widget(&self.add_project_name_input, name_input_area);
+        frame.render_widget(&self.add_project_path_input, path_input_area);
+
+        let valid = name_valid && path_valid;
+        if self.edit_project {
+            frame.render_widget(
+                Line::from(vec![
+                    Span::from(" Confirm ").style(
+                        Style::new()
+                            .fg(if tab_selected {
+                                if valid {
+                                    if self.item == 2 {
+                                        tailwind::SLATE.c200
+                                    } else {
+                                        tailwind::SLATE.c300
+                                    }
+                                } else {
+                                    tailwind::SLATE.c500
+                                }
+                            } else {
+                                tailwind::SLATE.c600
+                            })
+                            .bg(if tab_selected && self.item == 2 {
+                                if valid {
+                                    material::BLUE.c600
+                                } else {
+                                    tailwind::SLATE.c800
+                                }
+                            } else {
+                                tailwind::SLATE.c950
+                            }),
+                    ),
+                    Span::from(" "),
+                    Span::from(" No ").style(
+                        Style::new()
+                            .fg(if tab_selected && self.item == 3 {
+                                tailwind::SLATE.c300
+                            } else {
+                                tailwind::RED.c500
+                            })
+                            .bg(if tab_selected && self.item == 3 {
+                                material::RED.c500
+                            } else {
+                                tailwind::SLATE.c950
+                            }),
+                    ),
+                ]),
+                Layout::horizontal([Constraint::Length(14)])
+                    .flex(ratatui::layout::Flex::Center)
+                    .split(actions_area)[0],
+            );
+        } else {
+            frame.render_widget(
+                Line::from("Add").alignment(Alignment::Center).style(
+                    Style::new()
+                        .fg(if tab_selected {
+                            if valid {
+                                if self.item == 2 {
+                                    tailwind::SLATE.c200
+                                } else {
+                                    tailwind::SLATE.c300
+                                }
+                            } else {
+                                tailwind::SLATE.c500
+                            }
+                        } else {
+                            tailwind::SLATE.c600
+                        })
+                        .bg(if tab_selected && self.item == 2 {
+                            if valid {
+                                material::BLUE.c700
+                            } else {
+                                tailwind::SLATE.c800
+                            }
+                        } else {
+                            tailwind::SLATE.c950
+                        }),
+                ),
+                Layout::horizontal([Constraint::Length(5)])
+                    .flex(ratatui::layout::Flex::Center)
+                    .split(actions_area)[0],
+            );
+        }
+
+        if self.add_project_input_disable {
+            key_event_handler.bind_enter((Some(1), None), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.add_project_input_disable = false;
+                }
+            });
+        } else {
+            key_event_handler.bind_enter((Some(1), None), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.item = project_select.item.add(1).min(2);
+                }
+            });
+            if valid {
+                key_event_handler.bind_enter((Some(1), Some(2)), |app, _| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        let name = project_select.add_project_name_input.lines()[0].to_string();
+                        let path = project_select.add_project_path_input.lines()[0].to_string();
+
+                        project_select.add_project_name_input = TextArea::default();
+                        project_select.add_project_path_input = TextArea::default();
+
+                        project_select.tab = 0;
+                        project_select.item = 0;
+                        let edit = project_select.edit_project;
+                        project_select.edit_project = false;
+
+                        if edit {
+                            app.edit_project(name, path).unwrap();
+                        } else {
+                            app.create_project(name, path).unwrap();
+                        }
+                    }
+                });
+            }
+            key_event_handler.bind_enter((Some(1), Some(3)), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.add_project_name_input = TextArea::default();
+                    project_select.add_project_path_input = TextArea::default();
+
+                    project_select.tab = 0;
+                    project_select.item = 0;
+                    project_select.edit_project = false;
+                }
+            });
+        }
+
+        key_event_handler.bind_esc((Some(1), None), |app, _| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                if project_select.item < 2 && !project_select.add_project_input_disable {
+                    project_select.add_project_input_disable = true;
+                } else {
+                    project_select.add_project_name_input = TextArea::default();
+                    project_select.add_project_path_input = TextArea::default();
+
+                    project_select.tab = 0;
+                    project_select.item = 0;
+                    project_select.edit_project = false;
+                }
+            }
+        });
+    }
+
+    fn validate_name(&self, ranker: &Ranker<String>) -> bool {
         let name = self.add_project_name_input.lines();
+
+        !name[0].is_empty()
+            && !((!self.edit_project && ranker.get_project_names().contains(&name[0]))
+                || (self.edit_project
+                    && name[0]
+                        != ranker
+                            .get_project_by_index(self.project_list_selected_item)
+                            .unwrap()
+                            .name)
+                    && ranker.get_project_names().contains(&name[0]))
+    }
+    fn validate_path(&self) -> bool {
         let path = self.add_project_path_input.lines();
 
-        !name[0].is_empty() && std::path::PathBuf::from(&path[0]).is_dir()
+        std::path::PathBuf::from(&path[0]).is_dir()
     }
 
     fn vscroll_projects_list(app: &mut App, direction: Data) {

@@ -101,7 +101,9 @@ impl KeyEventHandler {
             }
         } else if let Some(screen) = drawer.current_screen.as_ref() {
             match screen {
-                crate::screens::Screens::MainScreen => todo!(),
+                crate::screens::Screens::MainScreen => {
+                    state = (None, None);
+                }
             }
         } else {
             return Ok(None);

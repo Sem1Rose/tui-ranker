@@ -1,4 +1,3 @@
-use anyhow::Ok;
 use ranker::Ranker;
 use ratatui::Frame;
 use ratatui::style::{Stylize, palette::tailwind::*};
@@ -10,12 +9,12 @@ use crate::popups::*;
 use crate::screens::*;
 
 pub struct Drawer {
-    image_backend: RatatuiImage,
+    pub image_backend: RatatuiImage,
 
     pub current_screen: Option<Screens>,
     pub active_popup: Option<Popups>,
 
-    main_screen: MainScreen,
+    pub main_screen: MainScreen,
 }
 
 impl Drawer {
@@ -54,7 +53,8 @@ impl Drawer {
         if let Some(current_screen) = self.current_screen.as_ref() {
             match current_screen {
                 Screens::MainScreen => {
-                    self.main_screen.render(frame, key_event_handler)?;
+                    self.main_screen
+                        .render(frame, key_event_handler, &mut self.image_backend)?;
                 }
             }
         } else {
@@ -68,7 +68,10 @@ impl Drawer {
         if let Some(popup) = self.active_popup.as_mut() {
             match popup {
                 Popups::ProjectSelect(project_select_popup) => match project_select_popup.phase {
-                    ProjectSelectPhase::Done => {}
+                    ProjectSelectPhase::Done => {
+                        self.close_popups();
+                        self.open_main_screen();
+                    }
                     _ => {}
                 },
             }

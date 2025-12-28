@@ -6,6 +6,7 @@ use rand::seq::SliceRandom;
 use ranker::Ranker;
 use ratatui::crossterm::event::{self, Event};
 use std::collections::HashMap;
+use std::time::Duration;
 use std::{
     fs::{self, File},
     io::Write,
@@ -13,6 +14,8 @@ use std::{
 };
 
 pub struct App {
+    root: PathBuf,
+
     terminal: Term,
     key_event_handler: KeyEventHandler,
     pub project_table: HashMap<String, String>,
@@ -35,15 +38,16 @@ impl App {
         Ok(Self {
             terminal: initialize_terminal()?,
             drawer: Drawer::new(),
-            project_table: Self::load_project_table(root, &mut ranker)?,
+            project_table: Self::load_project_table(&root, &mut ranker)?,
             key_event_handler: KeyEventHandler::default(),
+            root,
             ranker,
             quit: false,
         })
     }
 
     fn load_project_table(
-        root: PathBuf,
+        root: &PathBuf,
         ranker: &mut Ranker<String>,
     ) -> anyhow::Result<HashMap<String, String>> {
         if !root.join(".projects").exists() {
@@ -78,12 +82,7 @@ impl App {
     }
 
     fn save_project_table(&self) -> anyhow::Result<()> {
-        let mut file = File::create(
-            dirs::config_dir()
-                .expect("Couldn't get user's config dir")
-                .join("tui-ranker")
-                .join(".projects"),
-        )?;
+        let mut file = File::create(self.root.join(".projects"))?;
         for project in &self.project_table {
             writeln!(file, "{}: {}", project.0, project.1)?;
         }
@@ -112,8 +111,10 @@ impl App {
                 })
                 .map(|_| ())?;
 
-            if let Ok(event) = event::read() {
-                self.handle_event(event)?;
+            if event::poll(Duration::from_millis(100))? {
+                if let Ok(event) = event::read() {
+                    self.handle_event(event)?;
+                }
             }
 
             if self.quit {
@@ -121,6 +122,64 @@ impl App {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn select_project(&mut self) -> anyhow::Result<()> {
+        if let Some(crate::popups::Popups::ProjectSelect(project_select)) =
+            self.drawer.active_popup.as_ref()
+        {
+            let name = self
+                .ranker
+                .get_project_by_index(project_select.project_list_selected_item)
+                .unwrap()
+                .name
+                .clone();
+
+            let entries = std::fs::read_dir(self.project_table.get(&name).unwrap())?;
+            let mut files = vec![];
+            for entry in entries {
+                let dir = entry?;
+
+                if dir.file_name().to_str().is_some_and(|x| {
+                    x.to_lowercase().ends_with("png")
+                        || x.to_lowercase().ends_with("jpg")
+                        || x.to_lowercase().ends_with("jpeg")
+                        || x.to_lowercase().ends_with("webp")
+                }) {
+                    files.push(
+                        dir.path()
+                            // .canonicalize()
+                            // .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .to_string(),
+                    );
+                }
+            }
+            files.shuffle(&mut rand::rng());
+
+            self.ranker
+                .select_project(project_select.project_list_selected_item)?;
+            self.ranker.sync_project(files)?;
+            self.drawer
+                .image_backend
+                .change_root(&self.ranker.get_selected_project().unwrap().dir);
+            self.drawer
+                .image_backend
+                .filter_cached_images(self.ranker.get_window_items().as_slice());
+            self.drawer
+                .image_backend
+                .preload_images(&self.ranker.get_window_items());
+
+            let result = self.ranker.get_next();
+            if let Ok(Some(x)) = result {
+                (
+                    self.drawer.main_screen.item_a,
+                    self.drawer.main_screen.item_b,
+                ) = x;
+            }
+        }
         Ok(())
     }
 
@@ -158,8 +217,6 @@ impl App {
         Ok(())
     }
     pub fn edit_project(&mut self, name: String, path: String) -> anyhow::Result<()> {
-        let entries = std::fs::read_dir(&path)?;
-
         if let Some(crate::popups::Popups::ProjectSelect(project_select)) =
             self.drawer.active_popup.as_ref()
         {
@@ -170,6 +227,7 @@ impl App {
             self.project_table.insert(name.clone(), path.clone());
             self.save_project_table()?;
 
+            let entries = std::fs::read_dir(&path)?;
             let mut files = vec![];
             for entry in entries {
                 let dir = entry?;

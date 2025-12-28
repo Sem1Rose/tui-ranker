@@ -29,13 +29,15 @@ type Result<T> = anyhow::Result<T, ProjectsError>;
 pub enum ProjectsError {
     NoProjects,
     NotEnoughItems,
+    ProjectExists,
     Other(anyhow::Error),
 }
 impl fmt::Display for ProjectsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoProjects => write!(f, "No projects were loaded or no projects found!"),
-            Self::NotEnoughItems => write!(f, "selected project has less than two items"),
+            Self::NotEnoughItems => write!(f, "Selected project has less than two items"),
+            Self::ProjectExists => write!(f, "Project already exists"),
             Self::Other(err) => write!(f, "{err}"),
         }
     }
@@ -175,17 +177,6 @@ where
     pub fn get_project_names(&self) -> Vec<String> {
         self.projects.iter().map(|p| p.name.clone()).collect()
     }
-    pub fn rename_project(&mut self, name: &str, new_name: &str) -> Result<()> {
-        if let Some(index) = self.try_find_project(name) {
-            self.projects[index].rename(&self.root, new_name)?;
-
-            // self.select_project(index)?;
-
-            Ok(())
-        } else {
-            Err(ProjectsError::NoProjects)
-        }
-    }
     pub fn try_find_project(&self, name: &str) -> Option<usize> {
         self.projects.iter().position(|p| p.name == name)
     }
@@ -212,6 +203,10 @@ where
         Ok(false)
     }
     pub fn create_project(&mut self, name: &str) -> Result<()> {
+        if self.projects.iter().any(|x| x.name == name) {
+            return Err(ProjectsError::ProjectExists);
+        }
+
         self.projects
             .push(Project::new(&self.root, name.to_string())?);
         self.selected_project = self.projects.len() - 1;
@@ -219,6 +214,25 @@ where
         self.no_projects = false;
 
         Ok(())
+    }
+    pub fn rename_project(&mut self, name: &str, new_name: &str) -> Result<()> {
+        if name == new_name {
+            return Ok(());
+        }
+
+        if self.projects.iter().any(|x| x.name == name) {
+            return Err(ProjectsError::ProjectExists);
+        }
+
+        if let Some(index) = self.try_find_project(name) {
+            self.projects[index].rename(&self.root, new_name)?;
+
+            // self.select_project(index)?;
+
+            Ok(())
+        } else {
+            Err(ProjectsError::NoProjects)
+        }
     }
     pub fn delete_project(&mut self, project: usize) -> Result<()> {
         if project >= self.projects.len() {
@@ -250,6 +264,12 @@ where
         // bail!("Couldn't find project {}", name)
         Ok(false)
     }
+    pub fn get_window_items(&self) -> Vec<&T> {
+        self.window
+            .iter()
+            .map(|i| &self.get_selected_project().unwrap().items[*i as usize].0)
+            .collect::<Vec<_>>()
+    }
 
     pub fn get_next(&mut self) -> Result<Option<(T, T)>> {
         if self.no_projects {
@@ -275,12 +295,10 @@ where
             }
             debug!("got a new window {:?}", self.window);
 
-            self.window_rated_items = 0;
             refresh = true;
         }
 
         if refresh {
-            self.item_a = *self.window.iter().choose(&mut rand::rng()).unwrap() as usize;
             self.item_b = self.choose_random_opponent(self.item_a);
         } else if self.item_a_won {
             let mut a_rated_all_window = true;
@@ -408,7 +426,7 @@ where
         (1..self.window_size).sum()
     }
 
-    fn get_new_window(&mut self) -> bool {
+    pub fn get_new_window(&mut self) -> bool {
         let mut all_done = true;
         for bitmask in &self.projects[self.selected_project].bitmasks {
             if bitmask.get_num_ones() < self.projects[self.selected_project].bitmasks.len() as u16 {
@@ -465,6 +483,8 @@ where
                 break;
             }
         }
+
+        self.item_a = *self.window.iter().choose(&mut rand::rng()).unwrap() as usize;
 
         true
     }
@@ -560,67 +580,10 @@ where
     }
 }
 
-// impl<T> Default for Ranker<T>
-// where
-//     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
-// {
-//     fn default() -> Self {
-//         let root = dirs::config_dir()
-//             .expect("Couldn't get user's config dir")
-//             .join("ranker");
-//         if !root.exists() {
-//             std::fs::create_dir(&root).expect("Couldn't create root directory");
-//         }
-
-//         let mut projects: Vec<Project<T>> = root
-//             .read_dir()
-//             .unwrap()
-//             .filter_map(|x| x.ok())
-//             .filter(|x| x.path().is_dir())
-//             .inspect(|x| info!("{}", x.path().file_name().unwrap().to_str().unwrap()))
-//             .filter_map(|x| {
-//                 Project::<T>::new(
-//                     &root,
-//                     x.path().file_name().unwrap().to_str().unwrap().to_string(),
-//                 )
-//                 .ok()
-//             }) // `new` will return an error if it can't create the necessary files, so the object is skipped
-//             .collect();
-//         if projects.is_empty() {
-//             projects
-//                 .push(Project::<T>::new(&root, "0".into()).expect("IDK just figure it out gng"));
-//         }
-
-//         Self {
-//             projects,
-//             root,
-//             item_a_won: true,
-//             selected_project: Default::default(),
-//             window: Default::default(),
-//             item_a: Default::default(),
-//             item_b: Default::default(),
-//             window_rated_items: Default::default(),
-//             window_size: DEFUALT_WINDOW_SIZE,
-//         }
-//     }
-// }
-
-// consumes self :(
-// impl<T> Iterator for Ranker<T>
-// where
-//     T: FromStr + ToString + PartialEq<T> + Clone + Default + std::fmt::Debug,
-// {
-//     type Item = (T, T);
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.get_next().unwrap_or(None)
-//     }
-// }
-
 #[derive(Default)]
 pub struct Project<T> {
     pub name: String,
-    dir: PathBuf,
+    pub dir: PathBuf,
 
     items: Vec<(T, f32)>,
     bitmasks: Vec<BitField>,
@@ -686,28 +649,38 @@ where
     }
 
     fn initialize(&mut self, items: Vec<T>) -> Result<()> {
-        let cached_items = self.items.clone();
-        self.items = vec![];
+        // let mut cached_items = self.items.clone();
+        // self.items = vec![];
 
-        if cached_items.is_empty() || items.is_empty() {
+        // panic!(
+        //     "{} {} {} {}",
+        //     items.len(),
+        //     cached_items.len(),
+        //     self.bitmasks.len(),
+        //     self.bitmasks
+        //         .iter()
+        //         .fold(0, |acc, x| acc + x.get_num_ones())
+        // );
+        if self.items.is_empty() || items.is_empty() {
             self.items = items.into_iter().map(|x| (x, f32::NAN)).collect();
             self.bitmasks = vec![];
             self.results = vec![];
 
             for i in 0..self.items.len() as u16 {
                 let mut new_bitmask: BitField = vec![].into();
-                new_bitmask.fit_to_number_of_bits(self.items.len() as u16 - 1);
+                new_bitmask.fit_to_number_of_bits(self.items.len() as u16);
                 new_bitmask.set_bit(i);
                 self.bitmasks.push(new_bitmask);
 
                 let mut result: BitField = vec![].into();
-                result.fit_to_number_of_bits(self.items.len() as u16 - 1);
+                result.fit_to_number_of_bits(self.items.len() as u16);
                 self.results.push(result);
             }
         } else {
-            for (i, cached_item) in cached_items.iter().enumerate().rev() {
-                if !items.iter().any(|x| *x == cached_item.0) {
-                    debug!("Removing item {:?}", cached_item.0);
+            for i in (0..self.items.len()).rev() {
+                if !items.iter().any(|x| *x == self.items[i].0) {
+                    debug!("Removing item {:?}", self.items[i].0);
+                    self.items.remove(i);
 
                     self.bitmasks.remove(i);
                     for bm in self.bitmasks.iter_mut() {
@@ -723,7 +696,7 @@ where
 
             let mut new_items: Vec<_> = items
                 .into_iter()
-                .filter(|new_item| !cached_items.iter().any(|x| x.0 == *new_item))
+                .filter(|new_item| !self.items.iter().any(|x| x.0 == *new_item))
                 .collect();
 
             new_items.shuffle(&mut rand::rng());
@@ -731,23 +704,31 @@ where
                 debug!("Adding item {:?}", new_item);
 
                 let mut new_bitmask: BitField = vec![].into();
-                new_bitmask.fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
+                new_bitmask.fit_to_number_of_bits(self.items.len() as u16);
                 new_bitmask.set_bit(self.items.len() as u16);
                 self.bitmasks.push(new_bitmask);
 
                 self.items.push((new_item, f32::NAN));
 
                 let mut new_result: BitField = vec![].into();
-                new_result.fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
+                new_result.fit_to_number_of_bits(self.items.len() as u16);
                 self.results.push(new_result);
             }
 
             for i in 0..self.items.len() {
-                self.bitmasks[i].fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
-                self.results[i].fit_to_number_of_bits(self.items.len().saturating_sub(1) as u16);
+                self.bitmasks[i].fit_to_number_of_bits(self.items.len() as u16);
+                self.results[i].fit_to_number_of_bits(self.items.len() as u16);
             }
         }
 
+        // panic!(
+        //     "{} {} {}",
+        //     self.items.len(),
+        //     self.bitmasks.len(),
+        //     self.bitmasks
+        //         .iter()
+        //         .fold(0, |acc, x| acc + x.get_num_ones())
+        // );
         self.num_rated_items = (self
             .bitmasks
             .iter()

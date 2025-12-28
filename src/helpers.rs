@@ -14,7 +14,7 @@ pub fn center_rect(area: Rect, horizontal: Constraint, vertical: Constraint) -> 
     area
 }
 
-pub fn popup(
+pub fn static_popup(
     frame: &mut Frame,
     horizontal: Constraint,
     vertical: Constraint,
@@ -41,6 +41,58 @@ pub fn popup(
     popup_area
 }
 
+pub fn dynamic_popup(
+    frame: &mut Frame,
+    max_height: Option<u16>,
+    aspect_ratio: f64,
+    background: Color,
+    title: &str,
+    title_style: Style,
+    title_alignment: Alignment,
+    border_style: Style,
+) -> Rect {
+    let area = dynamic_size(
+        max_height,
+        aspect_ratio,
+        Flex::Center,
+        Flex::Center,
+        frame.area(),
+    );
+
+    let popup = Block::bordered()
+        .border_set(border::PROPORTIONAL_WIDE)
+        .border_style(border_style)
+        .title(title)
+        .title_alignment(title_alignment)
+        .title_style(title_style);
+
+    let popup_area = popup.inner(area);
+    frame.render_widget(popup, area);
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(Block::new().bg(background), popup_area);
+
+    popup_area
+}
+
 pub fn add_padding(area: Rect, padding: Padding) -> Rect {
     Block::new().padding(padding).inner(area)
+}
+
+fn dynamic_size(
+    max_height: Option<u16>,
+    aspect_ratio: f64,
+    h_align: Flex,
+    v_align: Flex,
+    area: Rect,
+) -> Rect {
+    let height = max_height.unwrap_or(area.height).min(area.height);
+    let width = (height as f64 * aspect_ratio) as u16;
+
+    Layout::vertical([Constraint::Length(height)])
+        .flex(v_align)
+        .split(
+            Layout::horizontal([Constraint::Length(width)])
+                .flex(h_align)
+                .split(area)[0],
+        )[0]
 }
