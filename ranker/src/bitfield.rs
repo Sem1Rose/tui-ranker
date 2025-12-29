@@ -64,7 +64,7 @@ impl BitField {
         let div = rhs >> 3; // div by 8
         let rem = rhs & 7; // rem of 8
 
-        if self.0.len() <= div as usize {
+        if div as usize >= self.0.len() {
             panic!(
                 "index out of bounds: trying to get byte {} but the length is {}",
                 div,

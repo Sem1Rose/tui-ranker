@@ -1,6 +1,10 @@
 use anyhow::bail;
 use log::error;
-use ratatui::{Frame, layout::Size, prelude::Rect};
+use ratatui::{
+    Frame,
+    layout::{Constraint, Size},
+    prelude::Rect,
+};
 use ratatui_image::{Image, Resize, picker::Picker, protocol::Protocol};
 use std::{
     collections::HashMap,
@@ -9,6 +13,8 @@ use std::{
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
+
+use crate::helpers::center_rect;
 
 type LoadResult = (String, anyhow::Result<Protocol>);
 
@@ -26,6 +32,8 @@ pub struct RatatuiImage {
     rx_main: Receiver<LoadResult>,
 
     size: Option<Size>,
+
+    pub loading: u8,
 }
 
 impl RatatuiImage {
@@ -40,6 +48,7 @@ impl RatatuiImage {
             rx_main,
             tx_load,
             size: None,
+            loading: 0,
         }
     }
 
@@ -111,7 +120,7 @@ impl RatatuiImage {
 
                                     let resized = decoded.resize(
                                         1000000,
-                                        240,
+                                        360,
                                         ratatui_image::FilterType::CatmullRom,
                                     );
 
@@ -160,27 +169,31 @@ impl RatatuiImage {
         self.hashed_images.insert(path.clone(), None);
 
         _ = self.tx_load.send(LoadResize::Load(path));
+        self.loading += 1;
     }
 
     pub fn update(&mut self) {
-        let mut errored_ids = vec![];
+        // let mut errored_ids = vec![];
         for (name, result) in self.rx_main.try_iter() {
             if let Ok(protocol) = result {
                 if self.hashed_images.contains_key(&name) {
                     _ = self.hashed_images.get_mut(&name).unwrap().insert(protocol);
+                    self.loading -= 1;
                 }
             } else if let Err(e) = result {
                 error!("{}", e);
-                errored_ids.push(name);
+
+                _ = self.tx_load.send(LoadResize::Load(name));
             }
         }
 
-        for id in errored_ids {
-            self.remove_cached_image(&id);
-        }
+        // for id in errored_ids {
+        //     self.remove_cached_image(&id);
+        // }
     }
 
-    pub fn draw_image(&mut self, name: &str, area: Rect, frame: &mut Frame) {
+    pub fn draw_image(&mut self, name: &str, area: Rect, frame: &mut Frame) -> bool {
+        let mut drawn = false;
         if self.size.is_none() {
             _ = self.tx_load.send(LoadResize::Resize(area.as_size()));
             self.size = Some(area.as_size());
@@ -202,12 +215,18 @@ impl RatatuiImage {
                 }
             }
 
-            return;
+            return false;
         }
 
         if let Some(value) = self.hashed_images.get(name) {
             if let Some(protocol) = value {
-                frame.render_widget(Image::new(protocol), area);
+                let Size { width, height } = protocol.area().as_size();
+
+                frame.render_widget(
+                    Image::new(protocol),
+                    center_rect(area, Constraint::Length(width), Constraint::Length(height)),
+                );
+                drawn = true;
             }
         } else {
             self.hash_image(name.to_string());
@@ -220,6 +239,8 @@ impl RatatuiImage {
                 self.hash_image(path);
             }
         }
+
+        return drawn;
     }
 
     pub fn filter_cached_images(&mut self, filter: &[&String]) {
@@ -232,9 +253,5 @@ impl RatatuiImage {
 
     pub fn change_root(&self, root: &PathBuf) {
         _ = self.tx_load.send(LoadResize::CacheDir(root.join(".cache")))
-    }
-
-    fn remove_cached_image(&mut self, name: &str) {
-        self.hashed_images.remove(name);
     }
 }

@@ -1,6 +1,6 @@
 // use anyhow::bail;
 use bitfield::BitField;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use rand::seq::{IteratorRandom, SliceRandom};
 use std::{
     fmt,
@@ -428,8 +428,8 @@ where
 
     pub fn get_new_window(&mut self) -> bool {
         let mut all_done = true;
-        for bitmask in &self.projects[self.selected_project].bitmasks {
-            if bitmask.get_num_ones() < self.projects[self.selected_project].bitmasks.len() as u16 {
+        for bitmask in &self.get_selected_project().unwrap().bitmasks {
+            if bitmask.get_num_ones() < self.get_selected_project().unwrap().items.len() as u16 {
                 all_done = false;
                 break;
             }
@@ -441,25 +441,16 @@ where
         self.window_rated_items = 0;
         self.window = vec![];
         debug!("initializing a new window...");
-        // info!(
-        //     "{:#?}",
-        //     shuffle(&(0..bitmasks.len() as u16).collect::<Vec<_>>())
-        // );
-        // info!(
-        //     "{:#?}",
-        //     shuffle(&(0..bitmasks.len() as u16).collect::<Vec<_>>())
-        // );
         for i in shuffle(
-            &(0..self.projects[self.selected_project].bitmasks.len() as u16).collect::<Vec<_>>(),
+            &(0..self.get_selected_project().unwrap().bitmasks.len() as u16).collect::<Vec<_>>(),
         ) {
-            if self.projects[self.selected_project].bitmasks[i as usize].get_num_ones()
-                < self.projects[self.selected_project].bitmasks.len() as u16
+            if self.get_selected_project().unwrap().bitmasks[i as usize].get_num_ones()
+                < self.get_selected_project().unwrap().bitmasks.len() as u16
             {
                 self.window = vec![i];
                 break;
             }
         }
-
         for i in shuffle(
             &(0..self.projects[self.selected_project].bitmasks.len() as u16).collect::<Vec<_>>(),
         ) {
@@ -469,7 +460,7 @@ where
 
             let mut skip = false;
             for j in &self.window {
-                if self.projects[self.selected_project].bitmasks[i as usize].check_bit(*j) {
+                if self.get_selected_project().unwrap().bitmasks[i as usize].check_bit(*j) {
                     skip = true;
                     break;
                 }
@@ -585,9 +576,9 @@ pub struct Project<T> {
     pub name: String,
     pub dir: PathBuf,
 
-    items: Vec<(T, f32)>,
-    bitmasks: Vec<BitField>,
-    results: Vec<BitField>,
+    pub items: Vec<(T, f32)>,
+    pub bitmasks: Vec<BitField>,
+    pub results: Vec<BitField>,
 
     pub total_ratings: usize,
     pub num_rated_items: usize,
@@ -652,15 +643,6 @@ where
         // let mut cached_items = self.items.clone();
         // self.items = vec![];
 
-        // panic!(
-        //     "{} {} {} {}",
-        //     items.len(),
-        //     cached_items.len(),
-        //     self.bitmasks.len(),
-        //     self.bitmasks
-        //         .iter()
-        //         .fold(0, |acc, x| acc + x.get_num_ones())
-        // );
         if self.items.is_empty() || items.is_empty() {
             self.items = items.into_iter().map(|x| (x, f32::NAN)).collect();
             self.bitmasks = vec![];
@@ -721,14 +703,6 @@ where
             }
         }
 
-        // panic!(
-        //     "{} {} {}",
-        //     self.items.len(),
-        //     self.bitmasks.len(),
-        //     self.bitmasks
-        //         .iter()
-        //         .fold(0, |acc, x| acc + x.get_num_ones())
-        // );
         self.num_rated_items = (self
             .bitmasks
             .iter()
@@ -762,7 +736,7 @@ where
             *bitmask = vec![].into();
 
             bitmask.set_bit(i as u16);
-            bitmask.fit_to_number_of_bits(self.items.len() as u16 - 1);
+            bitmask.fit_to_number_of_bits(self.items.len() as u16);
         }
         for result in self.results.iter_mut() {
             *result = vec![].into();

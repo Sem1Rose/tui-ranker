@@ -17,7 +17,7 @@ pub struct App {
     root: PathBuf,
 
     terminal: Term,
-    key_event_handler: KeyEventHandler,
+    pub key_event_handler: KeyEventHandler,
     pub project_table: HashMap<String, String>,
 
     pub ranker: Ranker<String>,
@@ -93,10 +93,6 @@ impl App {
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
             self.key_event_handler.clear();
-            self.key_event_handler
-                .bind_key((None, None), 'q', |app, _| app.quit = true);
-            self.key_event_handler
-                .bind_key((None, None), 'p', |_, _| panic!("PANIC"));
 
             self.terminal
                 .draw(|frame| {
@@ -111,9 +107,17 @@ impl App {
                 })
                 .map(|_| ())?;
 
-            if event::poll(Duration::from_millis(100))? {
-                if let Ok(event) = event::read() {
-                    self.handle_event(event)?;
+            if !self.drawer.check_refresh_immediate() {
+                if self.drawer.check_refresh_delayed() {
+                    if event::poll(Duration::from_millis(5))? {
+                        if let Ok(event) = event::read() {
+                            self.handle_event(event)?;
+                        }
+                    }
+                } else {
+                    if let Ok(event) = event::read() {
+                        self.handle_event(event)?;
+                    }
                 }
             }
 
@@ -173,11 +177,8 @@ impl App {
                 .preload_images(&self.ranker.get_window_items());
 
             let result = self.ranker.get_next();
-            if let Ok(Some(x)) = result {
-                (
-                    self.drawer.main_screen.item_a,
-                    self.drawer.main_screen.item_b,
-                ) = x;
+            if let Ok(x) = result {
+                self.drawer.main_screen.items = x;
             }
         }
         Ok(())

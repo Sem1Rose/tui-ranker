@@ -45,13 +45,13 @@ pub fn dynamic_popup(
     frame: &mut Frame,
     max_height: Option<u16>,
     aspect_ratio: f64,
-    background: Color,
+    popup_background: Color,
     title: &str,
     title_style: Style,
     title_alignment: Alignment,
     border_style: Style,
 ) -> Rect {
-    let area = dynamic_size(
+    let area = dynamic_area(
         max_height,
         aspect_ratio,
         Flex::Center,
@@ -66,10 +66,17 @@ pub fn dynamic_popup(
         .title_alignment(title_alignment)
         .title_style(title_style);
 
+    let background = frame
+        .buffer_mut()
+        .cell((area.x, area.y + area.height))
+        .unwrap()
+        .bg;
+
     let popup_area = popup.inner(area);
+    frame.render_widget(Clear, area);
     frame.render_widget(popup, area);
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(Block::new().bg(background), popup_area);
+    frame.render_widget(Block::new().bg(background), area);
+    frame.render_widget(Block::new().bg(popup_background), popup_area);
 
     popup_area
 }
@@ -78,15 +85,20 @@ pub fn add_padding(area: Rect, padding: Padding) -> Rect {
     Block::new().padding(padding).inner(area)
 }
 
-fn dynamic_size(
+pub fn dynamic_area(
     max_height: Option<u16>,
     aspect_ratio: f64,
     h_align: Flex,
     v_align: Flex,
     area: Rect,
 ) -> Rect {
-    let height = max_height.unwrap_or(area.height).min(area.height);
-    let width = (height as f64 * aspect_ratio) as u16;
+    let mut height = max_height.unwrap_or(area.height).min(area.height);
+    let mut width = (height as f64 * aspect_ratio) as u16;
+
+    if width > area.width {
+        width = area.width;
+        height = (width as f64 / aspect_ratio) as u16;
+    }
 
     Layout::vertical([Constraint::Length(height)])
         .flex(v_align)

@@ -32,6 +32,8 @@ pub struct KeyEventHandler {
 impl KeyEventHandler {
     pub fn clear(&mut self) {
         self.binds.clear();
+
+        self.bind_key((None, None), 'q', |app, _| app.quit = true);
     }
 
     pub fn bind_horizontal(

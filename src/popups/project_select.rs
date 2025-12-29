@@ -3,7 +3,6 @@ use crate::KeyEventHandler;
 use crate::helpers::{add_padding, dynamic_popup};
 use crate::key_event_handler::Data;
 use crate::popups::Popups;
-use log::error;
 use ranker::Ranker;
 use ratatui::{
     Frame,
@@ -50,7 +49,12 @@ impl ProjectSelect {
         frame: &mut Frame,
         ranker: &Ranker<String>,
         key_event_handler: &mut KeyEventHandler,
+        exitable: bool,
     ) -> anyhow::Result<()> {
+        if exitable {
+            key_event_handler.clear();
+        }
+
         key_event_handler.bind_tab((Some(0), None), |app, data| {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.item = 0;
@@ -77,9 +81,9 @@ impl ProjectSelect {
         let [left, right] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Min(0)]).areas(popup_area);
 
-        self.render_projects_list(frame, right, ranker, key_event_handler);
+        self.render_projects_list(frame, right, ranker, key_event_handler, exitable);
 
-        self.render_add_edit_project(frame, left, ranker, key_event_handler);
+        self.render_add_edit_project(frame, left, ranker, key_event_handler, exitable);
 
         Ok(())
     }
@@ -90,6 +94,7 @@ impl ProjectSelect {
         area: Rect,
         ranker: &Ranker<String>,
         key_event_handler: &mut KeyEventHandler,
+        exitable: bool,
     ) {
         let tab_selected = self.tab == 0;
 
@@ -128,7 +133,18 @@ impl ProjectSelect {
                 project_select.phase = Phase::Done;
             }
         });
-        key_event_handler.bind_esc((Some(0), None), |app, _| {
+        if exitable {
+            key_event_handler.bind_esc((Some(0), Some(0)), move |app, _| {
+                app.drawer.close_popups();
+                app.drawer.main_screen.refresh = 1;
+            });
+        }
+        key_event_handler.bind_esc((Some(0), Some(1)), |app, _| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.item = 0;
+            }
+        });
+        key_event_handler.bind_esc((Some(0), Some(2)), |app, _| {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.project_list_show_delete_confirmation = false;
                 project_select.item = 0;
@@ -505,7 +521,11 @@ impl ProjectSelect {
                                 "{}/{}",
                                 project.num_rated_items, project.total_ratings
                             ))
-                            .style(Style::new().fg(tailwind::SLATE.c700)),
+                            .style(Style::new().fg(if selected {
+                                tailwind::SLATE.c300
+                            } else {
+                                tailwind::SLATE.c500
+                            })),
                         )
                         .gauge_style(Style::new().bg(tailwind::SLATE.c950).fg(if selected {
                             tailwind::INDIGO.c700
@@ -545,6 +565,7 @@ impl ProjectSelect {
         area: Rect,
         ranker: &Ranker<String>,
         key_event_handler: &mut KeyEventHandler,
+        exitable: bool,
     ) {
         if self.add_project_input_disable {
             key_event_handler.bind_tab((Some(1), None), |app, data| {
@@ -683,14 +704,14 @@ impl ProjectSelect {
 
         if self.edit_project {
             if self.add_project_input_disable {
-                key_event_handler.bind_horizontal((Some(1), Some(2)), |app, data| {
+                key_event_handler.bind_horizontal((Some(1), Some(2)), |app, _| {
                     if let Some(Popups::ProjectSelect(project_select)) =
                         app.drawer.active_popup.as_mut()
                     {
                         project_select.add_project_input_disable = false;
                     }
                 });
-                key_event_handler.bind_horizontal((Some(1), Some(3)), |app, data| {
+                key_event_handler.bind_horizontal((Some(1), Some(3)), |app, _| {
                     if let Some(Popups::ProjectSelect(project_select)) =
                         app.drawer.active_popup.as_mut()
                     {
@@ -1040,16 +1061,37 @@ impl ProjectSelect {
 
         key_event_handler.bind_esc((Some(1), None), |app, _| {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                if project_select.item < 2 && !project_select.add_project_input_disable {
-                    project_select.add_project_input_disable = true;
-                } else {
-                    project_select.add_project_name_input = TextArea::default();
-                    project_select.add_project_path_input = TextArea::default();
+                project_select.add_project_input_disable = true;
+            }
+        });
 
-                    project_select.tab = 0;
-                    project_select.item = 0;
-                    project_select.edit_project = false;
-                }
+        let num_projects = ranker.get_num_projects();
+        key_event_handler.bind_esc((Some(1), Some(2)), move |app, _| {
+            if exitable && num_projects == 0 {
+                app.drawer.close_popups();
+                app.drawer.main_screen.refresh = 1;
+            }
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.add_project_name_input = TextArea::default();
+                project_select.add_project_path_input = TextArea::default();
+
+                project_select.tab = 0;
+                project_select.item = 0;
+                project_select.edit_project = false;
+            }
+        });
+        key_event_handler.bind_esc((Some(1), Some(3)), move |app, _| {
+            if exitable && num_projects == 0 {
+                app.drawer.close_popups();
+                app.drawer.main_screen.refresh = 1;
+            }
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.add_project_name_input = TextArea::default();
+                project_select.add_project_path_input = TextArea::default();
+
+                project_select.tab = 0;
+                project_select.item = 0;
+                project_select.edit_project = false;
             }
         });
     }
