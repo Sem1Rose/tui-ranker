@@ -98,13 +98,14 @@ impl KeyEventHandler {
         if let Some(popup) = drawer.active_popup.as_ref() {
             match popup {
                 crate::popups::Popups::ProjectSelect(project_select) => {
-                    state = (Some(project_select.tab), Some(project_select.item))
+                    state = project_select.get_state()
                 }
+                crate::popups::Popups::Results(result) => state = result.get_state(),
             }
         } else if let Some(screen) = drawer.current_screen.as_ref() {
             match screen {
-                crate::screens::Screens::MainScreen => {
-                    state = (None, None);
+                crate::screens::Screens::MainScreen(main_screen) => {
+                    state = main_screen.get_state();
                 }
             }
         } else {

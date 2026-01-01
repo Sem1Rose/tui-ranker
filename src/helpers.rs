@@ -41,6 +41,33 @@ pub fn static_popup(
     popup_area
 }
 
+pub fn dynamic_area(
+    max_height: Option<u16>,
+    aspect_ratio: f64,
+    h_align: Flex,
+    v_align: Flex,
+    area: Rect,
+) -> Rect {
+    let mut height = max_height.unwrap_or(area.height).min(area.height);
+    let mut width = (height as f64 * aspect_ratio) as u16;
+
+    if width > area.width {
+        width = area.width;
+        height = (width as f64 / aspect_ratio) as u16;
+        if height > area.height {
+            height = area.height;
+        }
+    }
+
+    Layout::vertical([Constraint::Length(height)])
+        .flex(v_align)
+        .split(
+            Layout::horizontal([Constraint::Length(width)])
+                .flex(h_align)
+                .split(area)[0],
+        )[0]
+}
+
 pub fn dynamic_popup(
     frame: &mut Frame,
     max_height: Option<u16>,
@@ -66,16 +93,24 @@ pub fn dynamic_popup(
         .title_alignment(title_alignment)
         .title_style(title_style);
 
-    let background = frame
+    let top_background = frame.buffer_mut().cell((area.x, area.y)).unwrap().bg;
+    let bottom_background = frame
         .buffer_mut()
-        .cell((area.x, area.y + area.height))
+        .cell((area.x, area.y + area.height - 1))
         .unwrap()
         .bg;
 
     let popup_area = popup.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(popup, area);
-    frame.render_widget(Block::new().bg(background), area);
+    frame.render_widget(
+        Block::new().bg(top_background),
+        add_padding(area, Padding::bottom(1)),
+    );
+    frame.render_widget(
+        Block::new().bg(bottom_background),
+        add_padding(area, Padding::top(1)),
+    );
     frame.render_widget(Block::new().bg(popup_background), popup_area);
 
     popup_area
@@ -83,28 +118,4 @@ pub fn dynamic_popup(
 
 pub fn add_padding(area: Rect, padding: Padding) -> Rect {
     Block::new().padding(padding).inner(area)
-}
-
-pub fn dynamic_area(
-    max_height: Option<u16>,
-    aspect_ratio: f64,
-    h_align: Flex,
-    v_align: Flex,
-    area: Rect,
-) -> Rect {
-    let mut height = max_height.unwrap_or(area.height).min(area.height);
-    let mut width = (height as f64 * aspect_ratio) as u16;
-
-    if width > area.width {
-        width = area.width;
-        height = (width as f64 / aspect_ratio) as u16;
-    }
-
-    Layout::vertical([Constraint::Length(height)])
-        .flex(v_align)
-        .split(
-            Layout::horizontal([Constraint::Length(width)])
-                .flex(h_align)
-                .split(area)[0],
-        )[0]
 }

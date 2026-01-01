@@ -1,4 +1,4 @@
-use crate::{KeyEventHandler, image_backend::RatatuiImage, popups::*, screens::*};
+use crate::{KeyEventHandler, popups::*, screens::*};
 use ranker::Ranker;
 use ratatui::{
     Frame,
@@ -9,12 +9,8 @@ use ratatui::{
 };
 
 pub struct Drawer {
-    pub image_backend: RatatuiImage,
-
     pub current_screen: Option<Screens>,
     pub active_popup: Option<Popups>,
-
-    pub main_screen: MainScreen,
 
     show_term_size_warning: bool,
 
@@ -25,10 +21,8 @@ const MINTERMSIZE: [u32; 2] = [100, 30];
 impl Drawer {
     pub fn new() -> Self {
         Drawer {
-            image_backend: RatatuiImage::new(),
             current_screen: None,
             active_popup: Some(Popups::default()),
-            main_screen: MainScreen::default(),
             show_term_size_warning: false,
             refresh_immediate: 0,
         }
@@ -37,22 +31,31 @@ impl Drawer {
     pub fn render_app(
         &mut self,
         frame: &mut Frame,
-        ranker: &Ranker<String>,
+        ranker: &mut Ranker<String>,
         key_event_handler: &mut KeyEventHandler,
     ) -> anyhow::Result<()> {
         self.refresh_immediate = self.refresh_immediate.saturating_sub(1);
 
         self.check_term_size(frame);
-        self.image_backend.update();
+        self.update_image_renderers();
 
         self.draw_current_screen(frame, ranker, key_event_handler)?;
 
-        self.check_popups()?;
+        self.check_popups(ranker)?;
         if !self.show_term_size_warning && self.active_popup.is_some() {
             self.draw_popup(frame, ranker, key_event_handler)?;
         }
 
         Ok(())
+    }
+
+    fn update_image_renderers(&mut self) {
+        if let Some(Screens::MainScreen(main_screen)) = self.current_screen.as_mut() {
+            main_screen.image_renderer.update();
+        }
+        if let Some(Popups::Results(results)) = self.active_popup.as_mut() {
+            results.image_renderer.update();
+        }
     }
 
     fn draw_current_screen(
@@ -65,15 +68,10 @@ impl Drawer {
 
         if self.show_term_size_warning {
             self.render_term_size_warning(frame);
-        } else if let Some(current_screen) = self.current_screen.as_ref() {
+        } else if let Some(current_screen) = self.current_screen.as_mut() {
             match current_screen {
-                Screens::MainScreen => {
-                    self.main_screen.render(
-                        frame,
-                        ranker,
-                        key_event_handler,
-                        &mut self.image_backend,
-                    )?;
+                Screens::MainScreen(main_screen) => {
+                    main_screen.render(frame, ranker, key_event_handler)?;
                 }
             }
         }
@@ -81,15 +79,16 @@ impl Drawer {
         Ok(())
     }
 
-    fn check_popups(&mut self) -> anyhow::Result<()> {
+    fn check_popups(&mut self, ranker: &mut Ranker<String>) -> anyhow::Result<()> {
         if let Some(popup) = self.active_popup.as_mut() {
             match popup {
                 Popups::ProjectSelect(project_select_popup) => match project_select_popup.phase {
                     ProjectSelectPhase::Done => {
-                        self.open_main_screen();
+                        self.open_main_screen(ranker);
                     }
                     _ => {}
                 },
+                Popups::Results(_) => (),
             }
         }
 
@@ -112,6 +111,9 @@ impl Drawer {
                         self.current_screen.is_some(),
                     )?;
                 }
+                Popups::Results(results_popup) => {
+                    results_popup.render(frame, key_event_handler)?;
+                }
             }
         } else {
         }
@@ -119,23 +121,58 @@ impl Drawer {
         Ok(())
     }
 
+    pub fn open_results_popup(&mut self, ranker: &mut Ranker<String>, finished: bool) {
+        let mut results_popup = Results::default().finished(finished);
+        results_popup
+            .image_renderer
+            .change_root(&ranker.get_selected_project().unwrap().dir);
+        results_popup.set_items(&ranker.get_item_scores());
+
+        self.active_popup = Some(Popups::Results(results_popup));
+    }
+
     pub fn close_popups(&mut self) {
         self.active_popup = None;
 
         self.refresh_immediate += 2;
+        if let Some(Screens::MainScreen(main_screen)) = self.current_screen.as_mut() {
+            main_screen.redraw_images = 1;
+        }
     }
 
-    pub fn open_main_screen(&mut self) {
+    pub fn open_main_screen(&mut self, ranker: &mut Ranker<String>) {
         self.close_popups();
 
-        self.current_screen = Some(Screens::MainScreen);
+        let mut main_screen = MainScreen::default();
+        main_screen
+            .image_renderer
+            .change_root(&ranker.get_selected_project().unwrap().dir);
+        main_screen
+            .image_renderer
+            .filter_cached_images(ranker.get_window_items().as_slice());
+        main_screen
+            .image_renderer
+            .preload_images(&ranker.get_window_items());
+
+        let result = ranker.get_next();
+        if let Ok(x) = result {
+            main_screen.items = x;
+        }
+
+        self.current_screen = Some(Screens::MainScreen(main_screen));
     }
 
     pub fn check_refresh_immediate(&mut self) -> bool {
         self.refresh_immediate > 0
     }
     pub fn check_refresh_delayed(&mut self) -> bool {
-        self.main_screen.drawing_images
+        if let Some(Popups::Results(results_popup)) = self.active_popup.as_ref() {
+            return results_popup.drawing_images;
+        } else if let Some(Screens::MainScreen(main_screen)) = self.current_screen.as_ref() {
+            return main_screen.drawing_images;
+        }
+
+        false
     }
 
     fn check_term_size(&mut self, frame: &Frame) {

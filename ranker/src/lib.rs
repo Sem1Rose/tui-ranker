@@ -103,7 +103,6 @@ where
             .unwrap()
             .filter_map(|x| x.ok())
             .filter(|x| x.path().is_dir())
-            // .inspect(|x| info!("{}", x.path().file_name().unwrap().to_str().unwrap()))
             .filter_map(|x| {
                 Project::<T>::new(
                     &self.root,
@@ -115,8 +114,6 @@ where
         self.projects.sort_by(|a, b| a.name.cmp(&b.name));
         if !self.projects.is_empty() {
             self.no_projects = false;
-            // self.projects
-            //     .push(Project::<T>::new(&self.root, "project")?);
         }
 
         Ok(self)
@@ -149,14 +146,6 @@ where
         Ok(())
     }
 
-    pub fn sync_project(&mut self, items: Vec<T>) -> Result<()> {
-        self.projects[self.selected_project].initialize(items)?;
-        if self.window.is_empty() {
-            self.init()?;
-        }
-
-        Ok(())
-    }
     pub fn get_selected_project(&self) -> Result<&Project<T>> {
         if self.no_projects {
             Err(ProjectsError::NoProjects)
@@ -179,6 +168,14 @@ where
     }
     pub fn try_find_project(&self, name: &str) -> Option<usize> {
         self.projects.iter().position(|p| p.name == name)
+    }
+    pub fn sync_project(&mut self, items: Vec<T>) -> Result<()> {
+        self.projects[self.selected_project].initialize(items)?;
+        if self.window.is_empty() {
+            self.init()?;
+        }
+
+        Ok(())
     }
     pub fn select_project(&mut self, project: usize) -> Result<()> {
         if project >= self.projects.len() {
@@ -268,7 +265,7 @@ where
         self.window
             .iter()
             .map(|i| &self.get_selected_project().unwrap().items[*i as usize].0)
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     pub fn get_next(&mut self) -> Result<Option<(T, T)>> {
@@ -742,5 +739,6 @@ where
             *result = vec![].into();
             result.fit_to_bytes(self.items.len() as u16);
         }
+        self.num_rated_items = 0;
     }
 }

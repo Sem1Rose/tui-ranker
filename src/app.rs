@@ -1,5 +1,6 @@
 use crate::Drawer;
 use crate::KeyEventHandler;
+use crate::screens::Screens;
 use crate::types::{Term, initialize_terminal};
 use log::error;
 use rand::seq::SliceRandom;
@@ -7,6 +8,7 @@ use ranker::Ranker;
 use ratatui::crossterm::event::{self, Event};
 use std::collections::HashMap;
 use std::time::Duration;
+use std::time::Instant;
 use std::{
     fs::{self, File},
     io::Write,
@@ -80,7 +82,6 @@ impl App {
 
         Ok(project_table)
     }
-
     fn save_project_table(&self) -> anyhow::Result<()> {
         let mut file = File::create(self.root.join(".projects"))?;
         for project in &self.project_table {
@@ -166,20 +167,6 @@ impl App {
             self.ranker
                 .select_project(project_select.project_list_selected_item)?;
             self.ranker.sync_project(files)?;
-            self.drawer
-                .image_backend
-                .change_root(&self.ranker.get_selected_project().unwrap().dir);
-            self.drawer
-                .image_backend
-                .filter_cached_images(self.ranker.get_window_items().as_slice());
-            self.drawer
-                .image_backend
-                .preload_images(&self.ranker.get_window_items());
-
-            let result = self.ranker.get_next();
-            if let Ok(x) = result {
-                self.drawer.main_screen.items = x;
-            }
         }
         Ok(())
     }

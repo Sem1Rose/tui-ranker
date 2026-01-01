@@ -44,6 +44,10 @@ pub struct ProjectSelect {
 }
 
 impl ProjectSelect {
+    pub fn get_state(&self) -> (Option<usize>, Option<usize>) {
+        (Some(self.tab), Some(self.item))
+    }
+
     pub fn render(
         &mut self,
         frame: &mut Frame,
@@ -51,9 +55,7 @@ impl ProjectSelect {
         key_event_handler: &mut KeyEventHandler,
         exitable: bool,
     ) -> anyhow::Result<()> {
-        if exitable {
-            key_event_handler.clear();
-        }
+        key_event_handler.clear();
 
         key_event_handler.bind_tab((Some(0), None), |app, data| {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
@@ -125,7 +127,37 @@ impl ProjectSelect {
                 0
             };
 
-        key_event_handler.bind_vertical((Some(0), None), Self::vscroll_projects_list);
+        key_event_handler.bind_vertical((Some(0), None), |app, data| {
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.project_list_show_delete_confirmation = false;
+                project_select.item = 0;
+
+                match data {
+                    Data::Direction(true) => {
+                        project_select.project_list_selected_item = project_select
+                            .project_list_selected_item
+                            .add(1)
+                            .min(app.ranker.get_num_projects().saturating_sub(1));
+                        if project_select.project_list_selected_item
+                            - project_select.project_list_scroll_pos
+                            >= project_select.project_list_visible_items
+                        {
+                            project_select.project_list_scroll_pos += 1;
+                        }
+                    }
+                    Data::Direction(false) => {
+                        project_select.project_list_selected_item =
+                            project_select.project_list_selected_item.saturating_sub(1);
+                        if project_select.project_list_selected_item
+                            < project_select.project_list_scroll_pos
+                        {
+                            project_select.project_list_scroll_pos -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
         key_event_handler.bind_enter((Some(0), Some(0)), |app, _| {
             app.select_project().unwrap();
 
@@ -136,7 +168,6 @@ impl ProjectSelect {
         if exitable {
             key_event_handler.bind_esc((Some(0), Some(0)), move |app, _| {
                 app.drawer.close_popups();
-                app.drawer.main_screen.refresh = 1;
             });
         }
         key_event_handler.bind_esc((Some(0), Some(1)), |app, _| {
@@ -321,9 +352,9 @@ impl ProjectSelect {
         // }
         frame.render_widget(
             Block::new().bg(if selected {
-                tailwind::TEAL.c500
+                tailwind::TEAL.c600
             } else if !alternate {
-                tailwind::GRAY.c700
+                tailwind::GRAY.c600
             } else {
                 tailwind::SLATE.c700
             }),
@@ -1069,7 +1100,6 @@ impl ProjectSelect {
         key_event_handler.bind_esc((Some(1), Some(2)), move |app, _| {
             if exitable && num_projects == 0 {
                 app.drawer.close_popups();
-                app.drawer.main_screen.refresh = 1;
             }
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.add_project_name_input = TextArea::default();
@@ -1083,7 +1113,6 @@ impl ProjectSelect {
         key_event_handler.bind_esc((Some(1), Some(3)), move |app, _| {
             if exitable && num_projects == 0 {
                 app.drawer.close_popups();
-                app.drawer.main_screen.refresh = 1;
             }
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
                 project_select.add_project_name_input = TextArea::default();
@@ -1113,37 +1142,5 @@ impl ProjectSelect {
         let path = self.add_project_path_input.lines();
 
         std::path::PathBuf::from(&path[0]).is_dir()
-    }
-
-    fn vscroll_projects_list(app: &mut App, direction: Data) {
-        if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-            project_select.project_list_show_delete_confirmation = false;
-            project_select.item = 0;
-
-            match direction {
-                Data::Direction(true) => {
-                    project_select.project_list_selected_item = project_select
-                        .project_list_selected_item
-                        .add(1)
-                        .min(app.ranker.get_num_projects().saturating_sub(1));
-                    if project_select.project_list_selected_item
-                        - project_select.project_list_scroll_pos
-                        >= project_select.project_list_visible_items
-                    {
-                        project_select.project_list_scroll_pos += 1;
-                    }
-                }
-                Data::Direction(false) => {
-                    project_select.project_list_selected_item =
-                        project_select.project_list_selected_item.saturating_sub(1);
-                    if project_select.project_list_selected_item
-                        < project_select.project_list_scroll_pos
-                    {
-                        project_select.project_list_scroll_pos -= 1;
-                    }
-                }
-                _ => {}
-            }
-        }
     }
 }

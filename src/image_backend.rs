@@ -33,11 +33,11 @@ pub struct RatatuiImage {
 
     size: Option<Size>,
 
+    cache_dir: PathBuf,
     pub loading: u8,
 }
-
-impl RatatuiImage {
-    pub fn new() -> Self {
+impl Default for RatatuiImage {
+    fn default() -> Self {
         let (tx_main, rx_main) = mpsc::channel();
 
         let tx_load = Self::start_load_thread(&tx_main);
@@ -48,10 +48,13 @@ impl RatatuiImage {
             rx_main,
             tx_load,
             size: None,
+            cache_dir: PathBuf::new(),
             loading: 0,
         }
     }
+}
 
+impl RatatuiImage {
     fn start_load_thread(tx_main: &Sender<LoadResult>) -> Sender<LoadResize> {
         let (tx_load, rx_load) = mpsc::channel::<LoadResize>();
 
@@ -62,8 +65,8 @@ impl RatatuiImage {
         });
 
         thread::spawn(move || {
-            let mut cache_dir: Option<PathBuf> = None;
-            let mut size: Option<Size> = None;
+            let mut cache_dir: PathBuf = PathBuf::default();
+            let mut size: Size = Size::default();
 
             for path in rx_load.iter() {
                 match path {
@@ -81,15 +84,13 @@ impl RatatuiImage {
                         thread::spawn(move || {
                             let result = (|| -> anyhow::Result<_> {
                                 let mut decoded;
-                                if _cache_dir.as_ref().unwrap().join(&name).exists() {
+                                if _cache_dir.join(&name).exists() {
                                     let reader;
-                                    let result = image::ImageReader::open(
-                                        &_cache_dir.as_ref().unwrap().join(&name),
-                                    );
+                                    let result = image::ImageReader::open(&_cache_dir.join(&name));
                                     if let Err(err) = result {
                                         bail!(
                                             "Failed to open {}: {}",
-                                            _cache_dir.as_ref().unwrap().join(&name).display(),
+                                            _cache_dir.join(&name).display(),
                                             err
                                         );
                                     } else {
@@ -124,10 +125,7 @@ impl RatatuiImage {
                                         ratatui_image::FilterType::CatmullRom,
                                     );
 
-                                    if resized
-                                        .save(_cache_dir.as_ref().unwrap().join(&name))
-                                        .is_ok()
-                                    {
+                                    if resized.save(_cache_dir.join(&name)).is_ok() {
                                         decoded = resized;
                                     }
                                 }
@@ -137,8 +135,8 @@ impl RatatuiImage {
                                     Rect {
                                         x: 0,
                                         y: 0,
-                                        width: size.unwrap().width,
-                                        height: size.unwrap().height,
+                                        width: size.width,
+                                        height: size.height,
                                     },
                                     Resize::Scale(Some(ratatui_image::FilterType::Triangle)),
                                 )?;
@@ -150,13 +148,13 @@ impl RatatuiImage {
                         });
                     }
                     LoadResize::Resize(_size) => {
-                        size = Some(_size);
+                        size = _size;
                     }
                     LoadResize::CacheDir(_cache_dir) => {
                         if !_cache_dir.is_dir() {
                             fs::create_dir(&_cache_dir).unwrap();
                         }
-                        cache_dir = Some(_cache_dir);
+                        cache_dir = _cache_dir;
                     }
                 }
             }
@@ -181,7 +179,11 @@ impl RatatuiImage {
                     self.loading -= 1;
                 }
             } else if let Err(e) = result {
-                error!("{}", e);
+                error!("={:?}= {e}", PathBuf::from(&name).file_name().unwrap());
+                _ = fs::remove_file(
+                    self.cache_dir
+                        .join(&PathBuf::from(&name).file_name().unwrap()),
+                );
 
                 _ = self.tx_load.send(LoadResize::Load(name));
             }
@@ -251,7 +253,10 @@ impl RatatuiImage {
         self.preload_images = images.iter().map(|&x| x.clone()).collect()
     }
 
-    pub fn change_root(&self, root: &PathBuf) {
-        _ = self.tx_load.send(LoadResize::CacheDir(root.join(".cache")))
+    pub fn change_root(&mut self, root: &PathBuf) {
+        self.cache_dir = root.join(".cache");
+        _ = self
+            .tx_load
+            .send(LoadResize::CacheDir(self.cache_dir.clone()));
     }
 }
