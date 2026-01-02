@@ -624,6 +624,9 @@ where
         self.items = files::get_cached_items(&self.dir)?;
         self.bitmasks = files::get_cached_bitmasks(&self.dir)?;
         self.results = files::get_cached_results(&self.dir)?;
+        if !self.items.is_empty() && (self.bitmasks.is_empty() || self.results.is_empty()) {
+            self.reset_bitmasks_and_results();
+        }
 
         self.num_rated_items = (self
             .bitmasks
@@ -642,19 +645,18 @@ where
 
         if self.items.is_empty() || items.is_empty() {
             self.items = items.into_iter().map(|x| (x, f32::NAN)).collect();
-            self.bitmasks = vec![];
-            self.results = vec![];
 
-            for i in 0..self.items.len() as u16 {
-                let mut new_bitmask: BitField = vec![].into();
-                new_bitmask.fit_to_number_of_bits(self.items.len() as u16);
-                new_bitmask.set_bit(i);
-                self.bitmasks.push(new_bitmask);
+            self.reset_bitmasks_and_results();
+            // for i in 0..self.items.len() as u16 {
+            //     let mut new_bitmask: BitField = vec![].into();
+            //     new_bitmask.fit_to_number_of_bits(self.items.len() as u16);
+            //     // new_bitmask.set_bit(i);
+            //     self.bitmasks.push(new_bitmask);
 
-                let mut result: BitField = vec![].into();
-                result.fit_to_number_of_bits(self.items.len() as u16);
-                self.results.push(result);
-            }
+            //     let mut result: BitField = vec![].into();
+            //     result.fit_to_number_of_bits(self.items.len() as u16);
+            //     self.results.push(result);
+            // }
         } else {
             for i in (0..self.items.len()).rev() {
                 if !items.iter().any(|x| *x == self.items[i].0) {
@@ -683,15 +685,12 @@ where
                 debug!("Adding item {:?}", new_item);
 
                 let mut new_bitmask: BitField = vec![].into();
-                new_bitmask.fit_to_number_of_bits(self.items.len() as u16);
                 new_bitmask.set_bit(self.items.len() as u16);
                 self.bitmasks.push(new_bitmask);
 
                 self.items.push((new_item, f32::NAN));
 
-                let mut new_result: BitField = vec![].into();
-                new_result.fit_to_number_of_bits(self.items.len() as u16);
-                self.results.push(new_result);
+                self.results.push(vec![].into());
             }
 
             for i in 0..self.items.len() {
@@ -729,15 +728,19 @@ where
     }
 
     fn reset_bitmasks_and_results(&mut self) {
-        for (i, bitmask) in self.bitmasks.iter_mut().enumerate() {
-            *bitmask = vec![].into();
+        self.bitmasks.clear();
+        self.results.clear();
+        for i in 0..self.items.len() {
+            let mut bitmask: BitField = vec![].into();
 
             bitmask.set_bit(i as u16);
             bitmask.fit_to_number_of_bits(self.items.len() as u16);
-        }
-        for result in self.results.iter_mut() {
-            *result = vec![].into();
-            result.fit_to_bytes(self.items.len() as u16);
+            self.bitmasks.push(bitmask);
+
+            let mut result: BitField = vec![].into();
+
+            result.fit_to_number_of_bits(self.items.len() as u16);
+            self.results.push(result);
         }
         self.num_rated_items = 0;
     }

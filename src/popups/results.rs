@@ -1,10 +1,8 @@
-use crate::App;
 use crate::KeyEventHandler;
 use crate::helpers::{add_padding, dynamic_popup};
 use crate::image_backend::RatatuiImage;
 use crate::key_event_handler::Data;
 use crate::popups::Popups;
-use crate::screens::Screens;
 use ratatui::symbols::border;
 use ratatui::{
     Frame,
@@ -56,27 +54,25 @@ impl Results {
         let finished = self.finished;
         key_event_handler.clear();
         key_event_handler.bind_esc((None, None), move |app, _| {
-            app.drawer.close_popups();
+            // app.drawer.close_popups();
             if finished {
-                app.ranker
-                    .try_select_project_by_name(
-                        &app.ranker.get_selected_project().unwrap().name.clone(),
-                    )
-                    .unwrap();
+                app.drawer.open_project_select_popup();
+            } else {
+                app.drawer.close_popups();
 
-                app.drawer.open_main_screen(&mut app.ranker);
+                // app.ranker
+                //     .try_select_project_by_name(
+                //         &app.ranker.get_selected_project().unwrap().name.clone(),
+                //     )
+                //     .unwrap();
+
+                // app.drawer.open_main_screen(&mut app.ranker);
             }
         });
         key_event_handler.bind_key((None, None), 'q', move |app, _| {
             app.drawer.close_popups();
             if finished {
-                app.ranker
-                    .try_select_project_by_name(
-                        &app.ranker.get_selected_project().unwrap().name.clone(),
-                    )
-                    .unwrap();
-
-                app.drawer.open_main_screen(&mut app.ranker);
+                app.quit = true;
             }
         });
         key_event_handler.bind_vertical((None, None), |app, data| {

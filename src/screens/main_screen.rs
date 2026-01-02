@@ -1,7 +1,7 @@
 use crate::KeyEventHandler;
 use crate::helpers::{add_padding, dynamic_area};
 use crate::image_backend::RatatuiImage;
-use crate::popups::{Popups, ProjectSelect, Results};
+use crate::popups::{Popups, ProjectSelect};
 use crate::screens::Screens;
 use ranker::Ranker;
 use ratatui::Frame;
@@ -66,9 +66,6 @@ impl MainScreen {
         key_event_handler.bind_enter((None, None), |app, _| {
             app.drawer.open_results_popup(&mut app.ranker, false);
         });
-        key_event_handler.bind_key((None, None), ' ', |app, _| {
-            app.drawer.open_results_popup(&mut app.ranker, false);
-        });
 
         let project = ranker.get_selected_project().unwrap();
 
@@ -90,7 +87,7 @@ impl MainScreen {
             Constraint::Min(1),
         ])
         .areas(area);
-        let [controls, _, gauge] = Layout::vertical([
+        let [_controls, _, gauge] = Layout::vertical([
             Constraint::Length(2),
             Constraint::Min(1),
             Constraint::Length(4),

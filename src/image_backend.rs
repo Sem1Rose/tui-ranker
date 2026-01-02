@@ -2,8 +2,7 @@ use anyhow::bail;
 use log::error;
 use ratatui::{
     Frame,
-    layout::{Constraint, Size},
-    prelude::Rect,
+    layout::{Constraint, Rect, Size},
 };
 use ratatui_image::{Image, Resize, picker::Picker, protocol::Protocol};
 use std::{
@@ -61,7 +60,7 @@ impl RatatuiImage {
         let tx_main = tx_main.clone();
         let picker = Picker::from_query_stdio().unwrap_or_else(|_| {
             error!("error querying graphics capabilities");
-            Picker::from_fontsize((7, 14))
+            Picker::halfblocks()
         });
 
         thread::spawn(move || {
@@ -180,12 +179,21 @@ impl RatatuiImage {
                 }
             } else if let Err(e) = result {
                 error!("={:?}= {e}", PathBuf::from(&name).file_name().unwrap());
-                _ = fs::remove_file(
-                    self.cache_dir
-                        .join(&PathBuf::from(&name).file_name().unwrap()),
-                );
 
-                _ = self.tx_load.send(LoadResize::Load(name));
+                if self
+                    .cache_dir
+                    .join(&PathBuf::from(&name).file_name().unwrap())
+                    .is_file()
+                {
+                    _ = fs::remove_file(
+                        self.cache_dir
+                            .join(&PathBuf::from(&name).file_name().unwrap()),
+                    );
+
+                    _ = self.tx_load.send(LoadResize::Load(name));
+                } else {
+                    self.loading -= 1;
+                }
             }
         }
 

@@ -24,9 +24,9 @@ pub fn get_cached_results(dir: &Path) -> anyhow::Result<Vec<BitField>> {
     let mut file = File::open(dir.join(".results"))?;
     let mut results = vec![];
 
-    let mut buf = [0u8];
+    let mut buf = [0u8; 2];
     let mut n = file.read(&mut buf)?;
-    let bitmask_size = buf[0];
+    let bitmask_size = ((buf[0] as u16) << 8) | buf[1] as u16;
     if n == 0 || bitmask_size == 0 {
         return Ok(vec![]);
     }
@@ -46,9 +46,9 @@ pub fn get_cached_bitmasks(dir: &Path) -> anyhow::Result<Vec<BitField>> {
     let mut file = File::open(dir.join(".bitmasks"))?;
     let mut bitmasks = vec![];
 
-    let mut buf = [0u8];
+    let mut buf = [0u8; 2];
     let mut n = file.read(&mut buf)?;
-    let bitmask_size = buf[0];
+    let bitmask_size = ((buf[0] as u16) << 8) | buf[1] as u16;
     if n == 0 || bitmask_size == 0 {
         return Ok(vec![]);
     }
@@ -86,13 +86,13 @@ pub fn cache_results(dir: &Path, results: &[BitField]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let bitmask_size = (results.len() as u8 >> 3)
-        + if results.len() as u8 & 0b111 != 0 {
+    let bitmask_size = (results.len() as u16 >> 3)
+        + if results.len() as u16 & 0b111 != 0 {
             1
         } else {
             0
         };
-    _ = file.write(&[bitmask_size])?;
+    _ = file.write(&[(bitmask_size >> 8) as u8, bitmask_size as u8])?;
 
     for mut bitmask in results.iter().cloned() {
         bitmask.fit_to_bytes(bitmask_size as u16);
@@ -110,13 +110,13 @@ pub fn cache_bitmasks(dir: &Path, bitmasks: &[BitField]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let bitmask_size = (bitmasks.len() as u8 >> 3)
-        + if bitmasks.len() as u8 & 0b111 != 0 {
+    let bitmask_size = (bitmasks.len() as u16 >> 3)
+        + if bitmasks.len() as u16 & 0b111 != 0 {
             1
         } else {
             0
         };
-    _ = file.write(&[bitmask_size])?;
+    _ = file.write(&[(bitmask_size >> 8) as u8, bitmask_size as u8])?;
 
     for mut bitmask in bitmasks.iter().cloned() {
         bitmask.fit_to_bytes(bitmask_size as u16);

@@ -1,6 +1,5 @@
 use crate::Drawer;
 use crate::KeyEventHandler;
-use crate::screens::Screens;
 use crate::types::{Term, initialize_terminal};
 use log::error;
 use rand::seq::SliceRandom;
@@ -8,7 +7,6 @@ use ranker::Ranker;
 use ratatui::crossterm::event::{self, Event};
 use std::collections::HashMap;
 use std::time::Duration;
-use std::time::Instant;
 use std::{
     fs::{self, File},
     io::Write,

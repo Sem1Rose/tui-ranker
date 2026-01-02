@@ -1,4 +1,3 @@
-use crate::App;
 use crate::KeyEventHandler;
 use crate::helpers::{add_padding, dynamic_popup};
 use crate::key_event_handler::Data;
@@ -166,8 +165,23 @@ impl ProjectSelect {
             }
         });
         if exitable {
-            key_event_handler.bind_esc((Some(0), Some(0)), move |app, _| {
-                app.drawer.close_popups();
+            key_event_handler.bind_esc((Some(0), Some(0)), |app, _| {
+                app.select_project().unwrap();
+
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.phase = Phase::Done;
+                }
+            });
+            key_event_handler.bind_key((Some(0), Some(0)), 'q', |app, _| {
+                app.select_project().unwrap();
+
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.phase = Phase::Done;
+                }
             });
         }
         key_event_handler.bind_esc((Some(0), Some(1)), |app, _| {
@@ -458,9 +472,9 @@ impl ProjectSelect {
                         .style(
                             Style::new()
                                 .fg(if selected {
-                                    tailwind::STONE.c950
+                                    material::CYAN.c100
                                 } else {
-                                    material::ORANGE.c700
+                                    material::ORANGE.c400
                                 })
                                 .add_modifier(if selected {
                                     Modifier::BOLD
@@ -598,115 +612,11 @@ impl ProjectSelect {
         key_event_handler: &mut KeyEventHandler,
         exitable: bool,
     ) {
-        if self.add_project_input_disable {
-            key_event_handler.bind_tab((Some(1), None), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    project_select.item = 0;
-                    project_select.add_project_input_disable = false;
-                    if project_select.edit_project {
-                        project_select.edit_project = false;
-
-                        project_select.add_project_name_input = TextArea::default();
-                        project_select.add_project_path_input = TextArea::default();
-                    }
-
-                    match data {
-                        Data::Direction(_) => {
-                            project_select.tab = 0;
-                        }
-                        _ => {}
-                    }
-                }
-            });
-        } else if self.edit_project {
-            key_event_handler.bind_tab((Some(1), Some(3)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    match data {
-                        // Data::Direction(true) => {
-                        //     project_select.add_project_edit = false;
-
-                        //     project_select.add_project_name_input = TextArea::default();
-                        //     project_select.add_project_path_input = TextArea::default();
-
-                        //     project_select.tab = 0;
-                        //     project_select.item = 0;
-                        // }
-                        Data::Direction(false) => {
-                            project_select.item -= 1;
-                        }
-                        _ => {}
-                    }
-                }
-            });
-            key_event_handler.bind_tab((Some(1), Some(2)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    match data {
-                        Data::Direction(true) => {
-                            project_select.item += 1;
-                        }
-                        Data::Direction(false) => {
-                            project_select.item = 0;
-                        }
-                        _ => {}
-                    }
-                }
-            });
-            key_event_handler.bind_tab((Some(1), None), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    match data {
-                        Data::Direction(true) => {
-                            project_select.item = 2;
-                        }
-                        Data::Direction(false) => {
-                            project_select.item = 0;
-                        }
-                        _ => {}
-                    }
-                }
-            });
-        } else {
-            key_event_handler.bind_tab((Some(1), Some(2)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    match data {
-                        Data::Direction(true) => {
-                            project_select.add_project_input_disable = false;
-
-                            project_select.tab = 0;
-                            project_select.item = 0;
-                        }
-                        Data::Direction(false) => {
-                            project_select.item = 0;
-                        }
-                        _ => {}
-                    }
-                }
-            });
-            key_event_handler.bind_tab((Some(1), None), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    match data {
-                        Data::Direction(true) => {
-                            project_select.item = 2;
-                        }
-                        Data::Direction(false) => {
-                            project_select.item = 0;
-                        }
-                        _ => {}
-                    }
-                }
-            });
-        }
+        let tab_selected = self.tab == 1;
+        let name_valid = self.validate_name(ranker);
+        let path_valid = self.validate_path();
+        let valid = name_valid && path_valid;
+        let num_projects = ranker.get_num_projects();
 
         key_event_handler.bind_vertical((Some(1), None), |app, data| {
             if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
@@ -777,8 +687,206 @@ impl ProjectSelect {
             }
         }
 
-        let tab_selected = self.tab == 1;
-        let name_valid = self.validate_name(ranker);
+        if self.add_project_input_disable {
+            key_event_handler.bind_tab((Some(1), None), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.item = 0;
+                    project_select.add_project_input_disable = false;
+                    if project_select.edit_project {
+                        project_select.edit_project = false;
+
+                        project_select.add_project_name_input = TextArea::default();
+                        project_select.add_project_path_input = TextArea::default();
+                    }
+
+                    match data {
+                        Data::Direction(_) => {
+                            project_select.tab = 0;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        } else {
+            if self.edit_project {
+                key_event_handler.bind_tab((Some(1), Some(3)), |app, data| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        match data {
+                            // Data::Direction(true) => {
+                            //     project_select.add_project_edit = false;
+
+                            //     project_select.add_project_name_input = TextArea::default();
+                            //     project_select.add_project_path_input = TextArea::default();
+
+                            //     project_select.tab = 0;
+                            //     project_select.item = 0;
+                            // }
+                            Data::Direction(false) => {
+                                project_select.item -= 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            } else {
+                key_event_handler.bind_tab((Some(1), Some(2)), |app, data| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        match data {
+                            Data::Direction(true) => {
+                                project_select.add_project_input_disable = false;
+
+                                project_select.tab = 0;
+                                project_select.item = 0;
+                            }
+                            Data::Direction(false) => {
+                                project_select.item -= 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
+            key_event_handler.bind_tab((Some(1), None), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    match data {
+                        Data::Direction(true) => {
+                            project_select.item += 1;
+                        }
+                        Data::Direction(false) => {
+                            project_select.item -= 1;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+
+        if self.edit_project {
+            key_event_handler.bind_esc((Some(1), None), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.item = 3;
+                }
+            });
+        } else {
+            key_event_handler.bind_esc((Some(1), None), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.add_project_input_disable = true;
+                }
+            });
+        }
+        key_event_handler.bind_esc((Some(1), Some(2)), move |app, _| {
+            if exitable && num_projects == 0 {
+                app.drawer.close_popups();
+            }
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.add_project_name_input = TextArea::default();
+                project_select.add_project_path_input = TextArea::default();
+
+                project_select.tab = 0;
+                project_select.item = 0;
+                project_select.edit_project = false;
+            }
+        });
+        key_event_handler.bind_esc((Some(1), Some(3)), move |app, _| {
+            if exitable && num_projects == 0 {
+                app.drawer.close_popups();
+            }
+            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
+                project_select.add_project_name_input = TextArea::default();
+                project_select.add_project_path_input = TextArea::default();
+
+                project_select.tab = 0;
+                project_select.item = 0;
+                project_select.edit_project = false;
+            }
+        });
+
+        if !self.add_project_input_disable {
+            key_event_handler.bind_input_field((Some(1), Some(1)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    if let Data::Key(key_event) = data {
+                        project_select.add_project_path_input.input(key_event);
+                    }
+                }
+            });
+            key_event_handler.bind_input_field((Some(1), Some(0)), |app, data| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    if let Data::Key(key_event) = data {
+                        project_select.add_project_name_input.input(key_event);
+                    }
+                }
+            });
+        }
+        if self.add_project_input_disable {
+            key_event_handler.bind_enter((Some(1), None), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.add_project_input_disable = false;
+                }
+            });
+        } else {
+            key_event_handler.bind_enter((Some(1), None), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.item = project_select.item.add(1).min(2);
+                }
+            });
+            if valid {
+                key_event_handler.bind_enter((Some(1), Some(2)), |app, _| {
+                    if let Some(Popups::ProjectSelect(project_select)) =
+                        app.drawer.active_popup.as_mut()
+                    {
+                        let name = project_select.add_project_name_input.lines()[0].to_string();
+                        let path = project_select.add_project_path_input.lines()[0].to_string();
+
+                        project_select.add_project_name_input = TextArea::default();
+                        project_select.add_project_path_input = TextArea::default();
+
+                        project_select.tab = 0;
+                        project_select.item = 0;
+                        let edit = project_select.edit_project;
+                        project_select.edit_project = false;
+
+                        if edit {
+                            app.edit_project(name, path).unwrap();
+                        } else {
+                            app.create_project(name, path).unwrap();
+                        }
+                    }
+                });
+            }
+            key_event_handler.bind_enter((Some(1), Some(3)), |app, _| {
+                if let Some(Popups::ProjectSelect(project_select)) =
+                    app.drawer.active_popup.as_mut()
+                {
+                    project_select.add_project_name_input = TextArea::default();
+                    project_select.add_project_path_input = TextArea::default();
+
+                    project_select.tab = 0;
+                    project_select.item = 0;
+                    project_select.edit_project = false;
+                }
+            });
+        }
+
         self.add_project_name_input
             .set_style(Style::new().fg(if tab_selected {
                 if self.item == 0 && !self.add_project_input_disable {
@@ -846,7 +954,6 @@ impl ProjectSelect {
         self.add_project_name_input
             .set_placeholder_style(Style::new().fg(material::GRAY.c700));
 
-        let path_valid = self.validate_path();
         self.add_project_path_input
             .set_style(Style::new().fg(if tab_selected {
                 if self.item == 1 && !self.add_project_input_disable {
@@ -914,27 +1021,6 @@ impl ProjectSelect {
         self.add_project_path_input
             .set_placeholder_style(Style::new().fg(material::GRAY.c700));
 
-        if !self.add_project_input_disable {
-            key_event_handler.bind_input_field((Some(1), Some(1)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    if let Data::Key(key_event) = data {
-                        project_select.add_project_path_input.input(key_event);
-                    }
-                }
-            });
-            key_event_handler.bind_input_field((Some(1), Some(0)), |app, data| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    if let Data::Key(key_event) = data {
-                        project_select.add_project_name_input.input(key_event);
-                    }
-                }
-            });
-        }
-
         let [name_input_area, _, path_input_area, _, actions_area] = Layout::vertical([
             Constraint::Length(3),
             Constraint::Length(1),
@@ -955,7 +1041,6 @@ impl ProjectSelect {
         frame.render_widget(&self.add_project_name_input, name_input_area);
         frame.render_widget(&self.add_project_path_input, path_input_area);
 
-        let valid = name_valid && path_valid;
         if self.edit_project {
             frame.render_widget(
                 Line::from(vec![
@@ -1035,94 +1120,6 @@ impl ProjectSelect {
                     .split(actions_area)[0],
             );
         }
-
-        if self.add_project_input_disable {
-            key_event_handler.bind_enter((Some(1), None), |app, _| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    project_select.add_project_input_disable = false;
-                }
-            });
-        } else {
-            key_event_handler.bind_enter((Some(1), None), |app, _| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    project_select.item = project_select.item.add(1).min(2);
-                }
-            });
-            if valid {
-                key_event_handler.bind_enter((Some(1), Some(2)), |app, _| {
-                    if let Some(Popups::ProjectSelect(project_select)) =
-                        app.drawer.active_popup.as_mut()
-                    {
-                        let name = project_select.add_project_name_input.lines()[0].to_string();
-                        let path = project_select.add_project_path_input.lines()[0].to_string();
-
-                        project_select.add_project_name_input = TextArea::default();
-                        project_select.add_project_path_input = TextArea::default();
-
-                        project_select.tab = 0;
-                        project_select.item = 0;
-                        let edit = project_select.edit_project;
-                        project_select.edit_project = false;
-
-                        if edit {
-                            app.edit_project(name, path).unwrap();
-                        } else {
-                            app.create_project(name, path).unwrap();
-                        }
-                    }
-                });
-            }
-            key_event_handler.bind_enter((Some(1), Some(3)), |app, _| {
-                if let Some(Popups::ProjectSelect(project_select)) =
-                    app.drawer.active_popup.as_mut()
-                {
-                    project_select.add_project_name_input = TextArea::default();
-                    project_select.add_project_path_input = TextArea::default();
-
-                    project_select.tab = 0;
-                    project_select.item = 0;
-                    project_select.edit_project = false;
-                }
-            });
-        }
-
-        key_event_handler.bind_esc((Some(1), None), |app, _| {
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                project_select.add_project_input_disable = true;
-            }
-        });
-
-        let num_projects = ranker.get_num_projects();
-        key_event_handler.bind_esc((Some(1), Some(2)), move |app, _| {
-            if exitable && num_projects == 0 {
-                app.drawer.close_popups();
-            }
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                project_select.add_project_name_input = TextArea::default();
-                project_select.add_project_path_input = TextArea::default();
-
-                project_select.tab = 0;
-                project_select.item = 0;
-                project_select.edit_project = false;
-            }
-        });
-        key_event_handler.bind_esc((Some(1), Some(3)), move |app, _| {
-            if exitable && num_projects == 0 {
-                app.drawer.close_popups();
-            }
-            if let Some(Popups::ProjectSelect(project_select)) = app.drawer.active_popup.as_mut() {
-                project_select.add_project_name_input = TextArea::default();
-                project_select.add_project_path_input = TextArea::default();
-
-                project_select.tab = 0;
-                project_select.item = 0;
-                project_select.edit_project = false;
-            }
-        });
     }
 
     fn validate_name(&self, ranker: &Ranker<String>) -> bool {

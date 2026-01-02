@@ -130,6 +130,9 @@ impl Drawer {
 
         self.active_popup = Some(Popups::Results(results_popup));
     }
+    pub fn open_project_select_popup(&mut self) {
+        self.active_popup = Some(Popups::ProjectSelect(ProjectSelect::default()))
+    }
 
     pub fn close_popups(&mut self) {
         self.active_popup = None;
